@@ -32,8 +32,6 @@ You can also provide the following options which will be passed as module attrib
 
 Since a call to `use Flint` just creates an `Ecto` `embedded_schema` you can use them just as you would any other `Ecto` schemas. You can compose them, apply changesets to them, etc.
 
-## Example
-
 ```elixir
 defmodule User do
   use Flint, schema: [
@@ -131,6 +129,13 @@ url = URL.new(%{content_type: "application/json"})
 Flint.Schema.dump(url)
 # %{content_type: "application/json"}
 ```
+
+## Examples
+
+You can view the [Notebooks folder](https://github.com/acalejos/flint/tree/main/notebooks) for some examples in LIivebook.
+
+You can also look at [Merquery](https://github.com/acalejos/merquery/tree/main/lib/merquery/schemas) for a real, comprehensive
+example of how to use `Flint`.
 
 ## Installation
 
