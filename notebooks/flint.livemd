@@ -1,0 +1,61 @@
+# Flint
+
+```elixir
+Mix.install([
+  {:flint, github: "acalejos/flint"}
+])
+```
+
+## Declare a Schema
+
+```elixir
+defmodule Author do
+  use Flint,
+    schema: [
+      field!(:first_name),
+      field!(:last_name),
+      field(:bio, :string)
+    ]
+end
+```
+
+```elixir
+defmodule Book do
+  use Flint,
+    schema: [
+      field!(:title, :string),
+      embeds_one!(:author, Author),
+      embeds_many(:coauthors, Author),
+      field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
+    ]
+end
+```
+
+```elixir
+Book.new()
+```
+
+```elixir
+Book.new!(%{title: "THe old man and the sea"})
+```
+
+```elixir
+Book.new!(%{
+  title: "Harry Potter",
+  author: %{first_name: "J.K."},
+  genre: :fantasy
+})
+```
+
+```elixir
+book =
+  Book.new!(%{
+    title: "Harry Potter",
+    author: %{first_name: "J.K.", last_name: "Rowling"},
+    genre: :fantasy
+  })
+```
+
+```elixir
+Flint.Schema.dump(book)
+```
