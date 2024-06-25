@@ -142,7 +142,7 @@ example of how to use `Flint`.
 ```elixir
 def deps do
   [
-    {:flint, "~> 0.0.1"}
+    {:flint, github: "acalejos/flint"}
   ]
 end
 ```
