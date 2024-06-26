@@ -238,31 +238,8 @@ defmodule Flint.Schema do
     {module, opts}
   end
 
-  def changeset(schema, params \\ %{}) do
-    module = schema.__struct__
-    fields = module.__schema__(:fields) |> MapSet.new()
-    embedded_fields = module.__schema__(:embeds) |> MapSet.new()
-    params = if is_struct(params), do: Map.from_struct(params), else: params
-    required = module.__schema__(:required)
-
-    fields = fields |> MapSet.difference(embedded_fields)
-
-    required_embeds = Enum.filter(required, &(&1 in embedded_fields))
-
-    required_fields = Enum.filter(required, &(&1 in fields))
-
-    changeset =
-      schema
-      |> cast(params, fields |> MapSet.to_list())
-
-    changeset =
-      for field <- embedded_fields, reduce: changeset do
-        changeset ->
-          changeset
-          |> cast_embed(field, required: field in required_embeds)
-      end
-
-    changeset = changeset |> validate_required(required_fields)
+  def validate_fields(changeset) do
+    module = changeset.data.__struct__
 
     all_validations = module.__schema__(:validations)
 
@@ -317,6 +294,35 @@ defmodule Flint.Schema do
             apply(Ecto.Changeset, func, [chngset, field, arg])
         end)
     end
+  end
+
+  def changeset(schema, params \\ %{}) do
+    module = schema.__struct__
+    fields = module.__schema__(:fields) |> MapSet.new()
+    embedded_fields = module.__schema__(:embeds) |> MapSet.new()
+    params = if is_struct(params), do: Map.from_struct(params), else: params
+    required = module.__schema__(:required)
+
+    fields = fields |> MapSet.difference(embedded_fields)
+
+    required_embeds = Enum.filter(required, &(&1 in embedded_fields))
+
+    required_fields = Enum.filter(required, &(&1 in fields))
+
+    changeset =
+      schema
+      |> cast(params, fields |> MapSet.to_list())
+
+    changeset =
+      for field <- embedded_fields, reduce: changeset do
+        changeset ->
+          changeset
+          |> cast_embed(field, required: field in required_embeds)
+      end
+
+    changeset
+    |> validate_required(required_fields)
+    |> validate_fields()
   end
 
   def new(module, params \\ %{}) do
