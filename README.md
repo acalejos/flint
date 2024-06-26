@@ -21,16 +21,32 @@ This is useful if you want to make changes in the server-side code without needi
 
 ## Usage
 
-If you want to declare a schema with `Flint`, just `use Flint` within your module and pass your `:schema` as the last keyword argument.
+If you want to declare a schema with `Flint`, just `use Flint` within your module, and now you have access to `Flint`'s implementation of the
+`embedded_schema/1` macro.  You can declare an `embedded_schema` within your module as you otherwise would with `Ecto`. Within the `embedded_schema/1` block, you also have access to `Flint`s implementations of `embeds_one`,`embeds_one!`,`embeds_many`, `embeds_many!`, `field`, and `field!`.
 
-You can also provide the following options which will be passed as module attributes to the `Ecto` `embedded_schema`. Refer to the [`Ecto.Schema`](https://hexdocs.pm/ecto/Ecto.Schema.html#module-schema-attributes) docs for more about these options.
+You can also use the shorthand notation, where you pass in your schema definition as an argument to the `use/2` macro. `Flint.__using__/1` also
+accepts the following options which will be passed as module attributes to the `Ecto` `embedded_schema`. Refer to the [`Ecto.Schema`](https://hexdocs.pm/ecto/Ecto.Schema.html#module-schema-attributes) docs for more about these options.
 
 * `primary_key` (default `false`)
 * `schema_prefix` (default `nil`)
 * `schema_context` (default `nil`)
 * `timestamp_opts` (default `[type: :naive_datetime]`)
 
-Since a call to `use Flint` just creates an `Ecto` `embedded_schema` you can use them just as you would any other `Ecto` schemas. You can compose them, apply changesets to them, etc.
+So these two are equivalent:
+
+```elixir
+defmodule User do
+  use Flint
+
+  embedded_schema do
+    field! :username, :string
+    field! :password, :string, redacted: true
+    field :nickname, :string
+  end
+end
+```
+
+is equivalent to:
 
 ```elixir
 defmodule User do
@@ -41,6 +57,12 @@ defmodule User do
   ]
 end
 ```
+
+If you're starting with `Flint` and you know you will stick with it, the shorthand might make more sense. But if you want to be able to quickly
+change between `use Ecto.Schem` and `use Flint`, or you're converting some existing `Ecto` `embedded_schema`s to `Flint`, the latter might be
+preferable.
+
+Since a call to `Flint`'s `embedded_schema` or `use Flint, schema: []`  just creates an `Ecto` `embedded_schema` you can use them just as you would any other `Ecto` schemas. You can compose them, apply changesets to them, etc.
 
 ## API Additions
 

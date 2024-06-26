@@ -1,43 +1,215 @@
 # Flint
 
 ```elixir
-Mix.install([
-  {:flint, github: "acalejos/flint"}
-])
+Mix.install(
+  [
+    {:flint, path: "/Users/andres/Documents/flint"},
+    {:jason, "~> 1.4"}
+  ],
+  consolidate_protocols: false
+)
 ```
 
 ## Declare a Schema
 
+If you already have `Ecto` `embedded_schema`s that you want to convert to `Flint`, it's as easy as changing `use Ecto.Schema` to `use Flint`.
+
 ```elixir
-defmodule Author do
-  use Flint,
-    schema: [
-      field!(:first_name),
-      field!(:last_name),
-      field(:bio, :string)
-    ]
+defmodule Author_a do
+  use Ecto.Schema
+
+  @schema_prefix "Ecto"
+  embedded_schema do
+    field(:first_name)
+    field(:last_name)
+    field(:bio)
+  end
 end
 ```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Author_a, <<70, 79, 82, 49, 0, 0, 14, ...>>, :ok}
+```
+
+```elixir
+Author_a.__schema__(:primary_key) |> IO.inspect()
+Author_a.__schema__(:prefix) |> IO.inspect()
+Author_a.__schema__(:required)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[:id]
+"Ecto"
+```
+
+Just declare the same schema using `Flint` and notice the differences
+
+```elixir
+defmodule Author_b do
+  use Flint
+
+  @schema_prefix "Flint"
+  embedded_schema do
+    field(:first_name)
+    field(:last_name)
+    field(:bio)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Author_b, <<70, 79, 82, 49, 0, 0, 20, ...>>, :ok}
+```
+
+```elixir
+Author_b.__schema__(:primary_key) |> IO.inspect()
+Author_b.__schema__(:prefix) |> IO.inspect()
+Author_b.__schema__(:required)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[]
+"Flint"
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[]
+```
+
+Now there's by default no `primary_key` set for `embedded_schema` and now the `__schema__` reflection function accepts a new key -- `:required`
+
+Let's show off what that's used for
+
+```elixir
+defmodule Author_c do
+  use Flint
+
+  embedded_schema do
+    field!(:first_name)
+    field!(:last_name)
+    field(:bio, :string)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Author_c, <<70, 79, 82, 49, 0, 0, 20, ...>>, :ok}
+```
+
+```elixir
+Author_c.__schema__(:required)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[:last_name, :first_name]
+```
+
+`Flint` provides `!` versions of `field`, `embeds_one`, and `embeds_many`, which will both mark the field as `:required` in the `__schema__` reflection function, and will also include a `validate_required` call in the default `changeset` implementation that `Flint` provides.
+
+## Using Generated Functions
+
+### `changeset`, `new`, and `new!`
+
+<!-- livebook:{"break_markdown":true} -->
+
+`Flint` provides generated and overridable default implementations of `changeset`, `new`, and `new!` functions.
+
+```elixir
+Author_c.changeset(%Author_c{}, %{})
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+#Ecto.Changeset<
+  action: nil,
+  changes: %{},
+  errors: [
+    last_name: {"can't be blank", [validation: :required]},
+    first_name: {"can't be blank", [validation: :required]}
+  ],
+  data: #Author_c<>,
+  valid?: false,
+  ...
+>
+```
+
+As you can see, the generated `changeset` function automatically accounts for the required fields, and now you can use `changeset` as you would any other changeset.
+
+You can also use the generated `new` and `new!` functions. `new` will create a new struct from the passed params and will apply the changes regardless of validation, as opposed to `new!`, which will `raise` on validation errors, but otherwise will apply any valid changes.
+
+Let's take a look at a more practical example. In this example, we're:
+
+- Using both normal and `!` variants of field declarations
+- Using the shorthand notation where we pass the schema as an option to the `use Flint` call
+- Using both external and inline `embeds` fields.
+- Using an `Ecto.Enum` field type to map values between `embedded` and `dumped` representations.
 
 ```elixir
 defmodule Book do
   use Flint,
     schema: [
       field!(:title, :string),
-      embeds_one!(:author, Author),
-      embeds_many(:coauthors, Author),
+      embeds_one! :author, Author_d do
+        field!(:first_name)
+        field!(:last_name)
+        field(:bio, :string)
+      end,
+      embeds_many(:coauthors, Author_c),
       field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
     ]
 end
 ```
 
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Book, <<70, 79, 82, 49, 0, 0, 23, ...>>, :ok}
+```
+
+Now when we call `Book.new` it will create a new `Book` struct regardless of validation errors.
+
+**Note that by `embeds_many(!)` fields will default to an empty list (`[]`) at all times, whereas `embeds_one!` defaults to `nil` as it marks the field as `:required`, whereas `embeds_one` defaults to the empty struct (of its embedding). You can control this behavior for `embeds_one` using the `defaults_to_struct` boolean option.**
+
 ```elixir
 Book.new()
 ```
 
-```elixir
-Book.new!(%{title: "THe old man and the sea"})
+<!-- livebook:{"output":true} -->
+
 ```
+%Book{title: nil, author: nil, coauthors: [], genre: nil}
+```
+
+```elixir
+Book.__schema__(:required)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[:author, :title]
+```
+
+```elixir
+Book.new!(%{title: "The old man and the sea"})
+```
+
+The generated `changeset` functions will also enfore `:required` validations for embedded fields, so if any required field of the `:author` embedded field is not present, then `Book` will fail validation.
 
 ```elixir
 Book.new!(%{
@@ -56,6 +228,134 @@ book =
   })
 ```
 
+<!-- livebook:{"output":true} -->
+
+```
+%Book{
+  title: "Harry Potter",
+  author: %Book.Author_d{first_name: "J.K.", last_name: "Rowling", bio: nil},
+  coauthors: [],
+  genre: :fantasy
+}
+```
+
 ```elixir
-Flint.Schema.dump(book)
+defmodule Book_b do
+  use Flint,
+    schema: [
+      field!(:title, :string),
+      embeds_one :author, Author_c do
+        field!(:first_name)
+        field!(:last_name)
+        field(:bio, :string)
+      end,
+      embeds_many(:coauthors, Author_d),
+      field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
+    ]
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Book_b, <<70, 79, 82, 49, 0, 0, 23, ...>>, :ok}
+```
+
+Note the quirk that if the embedded field is not marked as required, but one of its subfields is, then if the embedded struct is partially intialized it will fail if the required subfield is missing
+
+```elixir
+Book_b.new!(%{
+  title: "Harry Potter",
+  author: %{first_name: "J.K."},
+  genre: :fantasy
+})
+```
+
+Whereas if it is not passed altogether then it will pass validation.
+
+```elixir
+Book_b.new!(%{
+  title: "Harry Potter",
+  genre: :fantasy
+})
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%Book_b{
+  title: "Harry Potter",
+  author: %Book_b.Author_c{first_name: nil, last_name: nil, bio: nil},
+  coauthors: [],
+  genre: :fantasy
+}
+```
+
+### `Jason.Encoder`, `Access`, and `dump`
+
+<!-- livebook:{"break_markdown":true} -->
+
+`Flint` will also implement the `Access` behaviour for your schema structs, deferring to `Map` for all implementations.
+
+If you have `Jason` as a dependency, `Flint` will also implement the `Jason.Encoder` protocol for each schema. The `Jason.Encoder` implementation will call `Ecto.embedded_dump(:json)` on your struct, which means that it will use whatever `dump` representation you set for each of your embedded schemas or declared types.
+
+```elixir
+book |> Flint.Schema.dump()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{
+  title: "Harry Potter",
+  author: %{first_name: "J.K.", last_name: "Rowling", bio: nil},
+  coauthors: [],
+  genre: 2
+}
+```
+
+Notice how, when dumped, the `:genre` field is represented as the value from its `Ecto.Enum` keyword map.
+
+```elixir
+encoded_book = Jason.encode!(book)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+"{\"title\":\"Harry Potter\",\"author\":{\"first_name\":\"J.K.\",\"last_name\":\"Rowling\",\"bio\":null},\"coauthors\":[],\"genre\":2}"
+```
+
+```elixir
+decoded_book = Jason.decode!(encoded_book)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{
+  "author" => %{"bio" => nil, "first_name" => "J.K.", "last_name" => "Rowling"},
+  "coauthors" => [],
+  "genre" => 2,
+  "title" => "Harry Potter"
+}
+```
+
+Now when we encode and decode, we get back to the dumped representation.
+
+If we want to convert back to the embedded representation, we just call `new` or `new!`
+
+```elixir
+Book.new!(decoded_book)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%Book{
+  title: "Harry Potter",
+  author: %Book.Author_d{first_name: "J.K.", last_name: "Rowling", bio: nil},
+  coauthors: [],
+  genre: :fantasy
+}
 ```
