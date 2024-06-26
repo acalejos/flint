@@ -3,7 +3,7 @@
 ```elixir
 Mix.install(
   [
-    {:flint, path: "/Users/andres/Documents/flint"},
+    {:flint, github: "acalejos/flint"},
     {:jason, "~> 1.4"}
   ],
   consolidate_protocols: false
