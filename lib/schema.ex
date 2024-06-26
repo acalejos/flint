@@ -30,6 +30,35 @@ defmodule Flint.Schema do
           opts
       end
 
+    {validator_opts, opts} =
+      Keyword.split(opts, [
+        :lt,
+        :gt,
+        :le,
+        :ge,
+        :eq,
+        :neq,
+        :greater_than,
+        :less_than,
+        :less_than_or_equal_to,
+        :greater_than_or_equal_to,
+        :equal_to,
+        :not_equal_to,
+        :format,
+        :subset_of,
+        :in,
+        :not_in,
+        :is,
+        :min,
+        :max,
+        :count
+      ])
+
+    # TODO: validate_validations!(type, validator_opts)
+    # Not sure how horrible it would be to implement compile-time checks on these
+    if length(validator_opts) != 0,
+      do: Module.put_attribute(__CALLER__.module, :validations, {name, validator_opts})
+
     quote do
       Ecto.Schema.field(unquote(name), unquote(type), unquote(opts))
     end
@@ -233,7 +262,61 @@ defmodule Flint.Schema do
           |> cast_embed(field, required: field in required_embeds)
       end
 
-    changeset |> validate_required(required_fields)
+    changeset = changeset |> validate_required(required_fields)
+
+    all_validations = module.__schema__(:validations)
+
+    for {field, validations} <- all_validations, reduce: changeset do
+      changeset ->
+        validations =
+          validations
+          |> Enum.map(fn {k, v} ->
+            {result, _bindings} = Code.eval_quoted(v, binding(), __ENV__)
+            {k, result}
+          end)
+
+        {validate_length_args, validations} =
+          Keyword.split(validations, [:is, :min, :max, :count])
+
+        {validate_number_args, validations} =
+          Keyword.split(validations, [:gt, :lt, :ge, :le, :eq, :ne])
+
+        validate_number_args =
+          Enum.map(validate_number_args, fn
+            {:gt, v} -> {:greater_than, v}
+            {:lt, v} -> {:less_than, v}
+            {:le, v} -> {:less_than_or_equal_to, v}
+            {:ge, v} -> {:greater_than_or_equal_to, v}
+            {:eq, v} -> {:equal_to, v}
+            {:neq, v} -> {:not_equal_to, v}
+            other -> other
+          end)
+
+        {validate_subset_arg, validations} = Keyword.pop(validations, :subset_of)
+        {validate_inclusion_arg, validations} = Keyword.pop(validations, :in)
+        {validate_exclusion_arg, validations} = Keyword.pop(validations, :not_in)
+        {validate_format_arg, _validations} = Keyword.pop(validations, :format)
+
+        validation_args = [
+          validate_inclusion: validate_inclusion_arg,
+          validate_exclusion: validate_exclusion_arg,
+          validate_number: validate_number_args,
+          validate_length: validate_length_args,
+          validate_format: validate_format_arg,
+          validate_subset: validate_subset_arg
+        ]
+
+        Enum.reduce(validation_args, changeset, fn
+          {_func, nil}, chngset ->
+            chngset
+
+          {_func, []}, chngset ->
+            chngset
+
+          {func, arg}, chngset ->
+            apply(Ecto.Changeset, func, [chngset, field, arg])
+        end)
+    end
   end
 
   def new(module, params \\ %{}) do

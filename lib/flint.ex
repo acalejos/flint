@@ -16,6 +16,7 @@ defmodule Flint do
       )
 
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
+    Module.register_attribute(__CALLER__.module, :validations, accumulate: true)
 
     prelude =
       quote do
@@ -26,6 +27,7 @@ defmodule Flint do
         defdelegate pop(data, key), to: Map
 
         def __schema__(:required), do: @required
+        def __schema__(:validations), do: @validations
 
         defdelegate changeset(schema, params \\ %{}), to: Flint.Schema
         def new(params \\ %{}), do: Flint.Schema.new(__MODULE__, params)
