@@ -25,12 +25,25 @@ defmodule Flint do
         defdelegate get_and_update(term, key, fun), to: Map
         defdelegate pop(data, key), to: Map
 
+        def __schema__(:required), do: @required
+
+        defdelegate changeset(schema, params \\ %{}), to: Flint.Schema
+        def new(params \\ %{}), do: Flint.Schema.new(__MODULE__, params)
+        def new!(params \\ %{}), do: Flint.Schema.new!(__MODULE__, params)
+        defoverridable new: 0, new: 1, new!: 0, new!: 1, changeset: 1, changeset: 2
+
+        if Code.ensure_loaded?(Jason) do
+          defimpl Jason.Encoder do
+            def encode(value, opts) do
+              value |> Ecto.embedded_dump(:json) |> Jason.Encode.map(opts)
+            end
+          end
+        end
+
         use Ecto.Schema
         import Ecto.Changeset
         import Ecto.Schema, except: [embedded_schema: 1]
         import Flint.Schema, only: [embedded_schema: 1]
-
-        @before_compile Flint.Schema
 
         @schema_prefix unquote(opts[:schema_prefix])
         @schema_context unquote(opts[:schema_context])

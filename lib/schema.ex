@@ -289,23 +289,4 @@ defmodule Flint.Schema do
     do: Module.concat([env.module, h | t])
 
   defp expand_nested_module_alias(other, _env), do: other
-
-  defmacro __before_compile__(_env) do
-    quote do
-      def __schema__(:required), do: @required
-
-      defdelegate changeset(schema, params \\ %{}), to: Flint.Schema
-      def new(params \\ %{}), do: Flint.Schema.new(__MODULE__, params)
-      def new!(params \\ %{}), do: Flint.Schema.new!(__MODULE__, params)
-      defoverridable new: 0, new: 1, new!: 0, new!: 1, changeset: 1, changeset: 2
-
-      if Code.ensure_loaded?(Jason) do
-        defimpl Jason.Encoder do
-          def encode(value, opts) do
-            value |> Ecto.embedded_dump(:json) |> Jason.Encode.map(opts)
-          end
-        end
-      end
-    end
-  end
 end
