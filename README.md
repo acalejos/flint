@@ -8,16 +8,17 @@
 
 Practical [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for data validation, coercion, and manipulation.
 
-Flint is built on top of Ecto and is meant to provide good defaults for using `embedded_schema`s for use outside of a database.
+## Features
 
-Of course, since you're using Ecto, you can use this for use as an ORM, but this is emphasizing the use of `embedded_schema`s as just more expressive and powerful maps while keeping compatibility with `Ecto.Changeset`, `Ecto.Type`, and all of the other benefits Ecto has to offer.
-
-In particular, `Flint` focuses on making it more ergonomic to use `embedded_schema`s as a superset of Maps, so a `Flint.Schema` by default implements the `Access` behaviour and implements the `Jason.Encoder` protocol.
-
-`Flint` also was made to leverage the distinction `Ecto` makes between the embedded representation of the schema and the dumped representation. This means that you can dictate how you want the Elixir-side representation to look, and then provide transformations
-for how it should be dumped, which helps when you want the serialized representation to look different.
-
-This is useful if you want to make changes in the server-side code without needing to change the client-side (or vice-versa). Or perhaps you want a mapped representation, where instead of an `Ecto.Enum` just converting its atom key to a string when dumped, it gets mapped to an integer, etc.
+* `!` Variants of Ecto `field`, `embeds_one`, and `embeds_many` macros to mark a field as required (see. [Required Fields](#required-fields))
+* Colocated validations, so you can define common validations alongside field declarations (see [Validations](#field-validations))
+* Adds `Access` implementation to all schemas
+* Adds `Jason.Encoder` implementation to all schemas
+* New [`Ecto.Schema` Reflection Functions](https://hexdocs.pm/ecto/Ecto.Schema.html#module-reflection)
+  * `__schema__(:required)` - Returns list of fields marked as required (from `!` macros)
+  * `__schema__(:validations)` - `Keyword` mapping of fields to validations
+* Convenient generated function (`changeset`,`new`,`new!`,...) (see. [Generated Functions](#generated-functions))
+* Configurable `Application`-wide defaults for `Ecto.Schema` API (see. [Config](#config))
 
 ## Installation
 
@@ -28,6 +29,20 @@ def deps do
   ]
 end
 ```
+
+## Motivation
+
+`Flint` is built on top of Ecto and is meant to provide good defaults for using `embedded_schema`s for use outside of a database.
+It also adds a bevy of convenient features to the existing `Ecto` API to make writing schemas and validations much quicker.
+
+Of course, since you're using Ecto, you can use this for use as an ORM, but this is emphasizing the use of `embedded_schema`s as just more expressive and powerful maps while keeping compatibility with `Ecto.Changeset`, `Ecto.Type`, and all of the other benefits Ecto has to offer.
+
+In particular, `Flint` focuses on making it more ergonomic to use `embedded_schema`s as a superset of Maps, so a `Flint.Schema` by default implements the `Access` behaviour and implements the `Jason.Encoder` protocol.
+
+`Flint` also was made to leverage the distinction `Ecto` makes between the embedded representation of the schema and the dumped representation. This means that you can dictate how you want the Elixir-side representation to look, and then provide transformations
+for how it should be dumped, which helps when you want the serialized representation to look different.
+
+This is useful if you want to make changes in the server-side code without needing to change the client-side (or vice-versa). Or perhaps you want a mapped representation, where instead of an `Ecto.Enum` just converting its atom key to a string when dumped, it gets mapped to an integer, etc.
 
 ## Usage
 
