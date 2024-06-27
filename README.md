@@ -19,6 +19,16 @@ for how it should be dumped, which helps when you want the serialized representa
 
 This is useful if you want to make changes in the server-side code without needing to change the client-side (or vice-versa). Or perhaps you want a mapped representation, where instead of an `Ecto.Enum` just converting its atom key to a string when dumped, it gets mapped to an integer, etc.
 
+## Installation
+
+```elixir
+def deps do
+  [
+    {:flint, github: "acalejos/flint"}
+  ]
+end
+```
+
 ## Usage
 
 If you want to declare a schema with `Flint`, just `use Flint` within your module, and now you have access to `Flint`'s implementation of the
@@ -64,19 +74,143 @@ preferable.
 
 Since a call to `Flint`'s `embedded_schema` or `use Flint, schema: []`  just creates an `Ecto` `embedded_schema` you can use them just as you would any other `Ecto` schemas. You can compose them, apply changesets to them, etc.
 
-## API Additions
+## Required Fields
 
 `Flint` adds the convenience bang (`!`) macros (`embed_one!`,`embed_many!`, `field!`) for field declarations within your struct to declare a field as required within its `changeset` function.
-
-`Flint` provides default implementations for the following functions for any schema declaration:
-
-* `changeset` - Creates a changeset by casting all fields and validating all that were marked as required. If a `:default` key is provided for a field, then any use of a bang (`!`) declaration will essentially be ignored since the cast will fall back to the default before any valdiations are performed.
-* `new` - Creates a new changeset from the empty module struct and applies the changes (regardless of whether the changeset was valid).
-* `new!` - Same as new, except raises if the changeset is not valid.
 
 `Flint` schemas also have a new reflection function in addition to the normal [`Ecto` reflection functions](https://hexdocs.pm/ecto/Ecto.Schema.html#module-reflection).
 
 * `__schema__(:required)` -- Returns a list of all fields that were marked as required.
+
+## Field Validations
+
+### Basic Validations
+
+`Flint` allows you to colocate schema definitions and validations.
+
+```elixir
+defmodule Person do
+  use Flint
+
+  embedded_schema do
+    field! :first_name, :string,  max: 10, min: 5
+    field! :last_name, :string, min: 5, max: 10
+    field :favorite_colors, {:array, :string}, subset_of: ["red", "blue", "green"]
+    field! :age, :integer, greater_than: 0, less_than: 100
+  end
+end
+```
+
+### Parameterized Validations
+
+You can even parameterize the options passed to the validations:
+
+```elixir
+defmodule Person do
+  use Flint
+
+  embedded_schema do
+    field! :first_name, :string,  max: 10, min: 5
+    field! :last_name, :string, min: 5, max: 10
+    field :favorite_colors, {:array, :string}, subset_of: ["red", "blue", "green"]
+    field! :age, :integer, greater_than: 0, less_than: max_age
+  end
+end
+```
+
+If you do this, make sure to pass the options as a keyword list into the call to `changeset`:
+
+```elixir
+Person.changeset(
+  %Person{},
+  %{first_name: "Bob", last_name: "Smith", favorite_colors: ["red", "blue", "pink"], age: 101},
+  [max_age: 100]
+)
+```
+
+```elixir
+#Ecto.Changeset<
+  action: nil,
+  changes: %{
+    age: 101,
+    first_name: "Bob",
+    last_name: "Smith",
+    favorite_colors: ["red", "blue", "pink"]
+  },
+  errors: [
+    first_name: {"should be at least %{count} character(s)",
+     [count: 5, validation: :length, kind: :min, type: :string]},
+    favorite_colors: {"has an invalid entry", [validation: :subset, enum: ["red", "blue", "green"]]},
+    age: {"must be less than %{number}", [validation: :number, kind: :less_than, number: 100]}
+  ],
+  data: #Person<>,
+  valid?: false,
+  ...
+>
+```
+
+This lets you change the parameters of the validations for each call to `changeset` for more flexibility
+
+### Options
+
+Currently, the options / validations supported out of the box with `Flint` are all based on validation functions
+defined in `Ecto.Changeset`:
+
+* `:greater_than` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:less_than` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:less_than_or_equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:greater_than_or_equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:not_equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:format` (see. [`Ecto.Changeset.validate_format/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_format/4))
+* `:subset_of` (see. [`Ecto.Changeset.validate_subset/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_subset/4))
+* `:in` (see. [`Ecto.Changeset.validate_inlusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_inclusion/4))
+* `:not_in` (see. [`Ecto.Changeset.validate_exclusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_exclusion/4))
+* `:is` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:min` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:max` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:count` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+
+### Aliases
+
+If you don't like the name of an option, you can provide a compile-time list of aliases to map new option names to [existing options](#options).
+
+In your config, add an `:aliases` key with a `Keyword` value, where each key is the new alias, and the value is an existing option name.
+
+For example, these are default aliases implemented in `Flint`:
+
+```elixir
+config Flint, aliases: [
+    lt: :less_than,
+    gt: :greater_than,
+    le: :less_than_or_equal_to,
+    ge: :greater_than_or_equal_to,
+    eq: :equal_to,
+    neq: :not_equal_to
+  ]
+```
+
+**NOTE** If you add your own aliases and want to keep these above defaults, you will have to add them manually to your aliases.
+
+### `__schema__(:validations)`
+
+Since validations are enforced through the generated `changeset` functions, if you override this function you will not get the benefits
+of the validations.
+
+If you want to implement your own, you can use `__schema__(:validations)` which is an added reflection function that stores validations.
+
+**NOTE** These are stored as their quoted representation to support passing bindings, so make sure to account for this if implementing yourself.
+
+If you want to override `changeset` but want to keep the default validation behavior, there is also the `Flint.Schema.validate_fields` function,
+which accepts an `%Ecto.Changetset{}` and optionally bindings, and performs validations using the information stored in `__schema__(:validations)`.
+
+## Generated Functions
+
+`Flint` provides default implementations for the following functions for any schema declaration. Each of these is overridable.
+
+* `changeset` - Creates a changeset by casting all fields and validating all that were marked as required. If a `:default` key is provided for a field, then any use of a bang (`!`) declaration will essentially be ignored since the cast will fall back to the default before any valdiations are performed.
+* `new` - Creates a new changeset from the empty module struct and applies the changes (regardless of whether the changeset was valid).
+* `new!` - Same as new, except raises if the changeset is not valid.
 
 ## Config
 
@@ -86,8 +220,10 @@ You can configure the default options set by `Flint`.
 * `embeds_one!`: The default arguments when using `embeds_one!`. Defaults to `[on_replace: :delete]`
 * `embeds_many`: The default arguments when using `embeds_many` or `embeds_many!`. Defaults to `[on_replace: :delete]`
 * `embeds_many!`: The default arguments when using `embeds_many!`. Defaults to `[on_replace: :delete]`
-
 * `:enum`: The default arguments for an `Ecto.Enum` field. Defaults to `[embed_as: :dumped]`.
+* `:aliases`: See [Aliases](#aliases)
+
+You can also configure any aliases you want to use for schema validations.
 
 ## Embedded vs Dumped Representations
 
@@ -158,15 +294,5 @@ You can view the [Notebooks folder](https://github.com/acalejos/flint/tree/main/
 
 You can also look at [Merquery](https://github.com/acalejos/merquery/tree/main/lib/merquery/schemas) for a real, comprehensive
 example of how to use `Flint`.
-
-## Installation
-
-```elixir
-def deps do
-  [
-    {:flint, github: "acalejos/flint"}
-  ]
-end
-```
 
 <!-- END MODULEDOC -->

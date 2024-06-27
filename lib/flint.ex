@@ -29,7 +29,7 @@ defmodule Flint do
         def __schema__(:required), do: @required
         def __schema__(:validations), do: @validations
 
-        defdelegate changeset(schema, params \\ %{}), to: Flint.Schema
+        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Schema
         def new(params \\ %{}), do: Flint.Schema.new(__MODULE__, params)
         def new!(params \\ %{}), do: Flint.Schema.new!(__MODULE__, params)
         defoverridable new: 0, new: 1, new!: 0, new!: 1, changeset: 1, changeset: 2

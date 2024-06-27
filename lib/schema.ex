@@ -12,6 +12,31 @@ defmodule Flint.Schema do
   @embeds_many_defaults Application.compile_env(Flint, [:embeds_many], on_replace: :delete)
   @embeds_many_bang_defaults Application.compile_env(Flint, [:embeds_many!], on_replace: :delete)
   @enum_defaults Application.compile_env(Flint, [:enum], embed_as: :dumped)
+  @validation_opts [
+    :greater_than,
+    :less_than,
+    :less_than_or_equal_to,
+    :greater_than_or_equal_to,
+    :equal_to,
+    :not_equal_to,
+    :format,
+    :subset_of,
+    :in,
+    :not_in,
+    :is,
+    :min,
+    :max,
+    :count
+  ]
+  @default_aliases [
+    lt: :less_than,
+    gt: :greater_than,
+    le: :less_than_or_equal_to,
+    ge: :greater_than_or_equal_to,
+    eq: :equal_to,
+    neq: :not_equal_to
+  ]
+  @aliases Application.compile_env(Flint, :aliases, @default_aliases)
   defp make_required(module, name) do
     Module.put_attribute(module, :required, name)
   end
@@ -30,29 +55,21 @@ defmodule Flint.Schema do
           opts
       end
 
-    {validator_opts, opts} =
-      Keyword.split(opts, [
-        :lt,
-        :gt,
-        :le,
-        :ge,
-        :eq,
-        :neq,
-        :greater_than,
-        :less_than,
-        :less_than_or_equal_to,
-        :greater_than_or_equal_to,
-        :equal_to,
-        :not_equal_to,
-        :format,
-        :subset_of,
-        :in,
-        :not_in,
-        :is,
-        :min,
-        :max,
-        :count
-      ])
+    {validator_opts, opts} = Keyword.split(opts, @validation_opts)
+    {alias_opts, opts} = Keyword.split(opts, Keyword.keys(@aliases))
+
+    validator_opts =
+      validator_opts ++
+        Enum.map(alias_opts, fn {als, opt} ->
+          mapped = Keyword.get(@aliases, als)
+
+          unless mapped in @validation_opts do
+            raise ArgumentError,
+                  "Alias #{inspect(als)} in field #{inspect(name)} mapped to invalid option #{inspect(mapped)}. Must be mapped to a value in #{inspect(@validation_opts)}"
+          end
+
+          {mapped, opt}
+        end)
 
     # TODO: validate_validations!(type, validator_opts)
     # Not sure how horrible it would be to implement compile-time checks on these
@@ -238,7 +255,7 @@ defmodule Flint.Schema do
     {module, opts}
   end
 
-  def validate_fields(changeset) do
+  def validate_fields(changeset, bindings \\ []) do
     module = changeset.data.__struct__
 
     all_validations = module.__schema__(:validations)
@@ -248,7 +265,7 @@ defmodule Flint.Schema do
         validations =
           validations
           |> Enum.map(fn {k, v} ->
-            {result, _bindings} = Code.eval_quoted(v, binding(), __ENV__)
+            {result, _bindings} = Code.eval_quoted(v, bindings, __ENV__)
             {k, result}
           end)
 
@@ -256,18 +273,14 @@ defmodule Flint.Schema do
           Keyword.split(validations, [:is, :min, :max, :count])
 
         {validate_number_args, validations} =
-          Keyword.split(validations, [:gt, :lt, :ge, :le, :eq, :ne])
-
-        validate_number_args =
-          Enum.map(validate_number_args, fn
-            {:gt, v} -> {:greater_than, v}
-            {:lt, v} -> {:less_than, v}
-            {:le, v} -> {:less_than_or_equal_to, v}
-            {:ge, v} -> {:greater_than_or_equal_to, v}
-            {:eq, v} -> {:equal_to, v}
-            {:neq, v} -> {:not_equal_to, v}
-            other -> other
-          end)
+          Keyword.split(validations, [
+            :less_than,
+            :greater_than,
+            :less_than_or_equal_to,
+            :greater_than_or_equal_to,
+            :equal_to,
+            :not_equal_to
+          ])
 
         {validate_subset_arg, validations} = Keyword.pop(validations, :subset_of)
         {validate_inclusion_arg, validations} = Keyword.pop(validations, :in)
@@ -296,7 +309,7 @@ defmodule Flint.Schema do
     end
   end
 
-  def changeset(schema, params \\ %{}) do
+  def changeset(schema, params \\ %{}, bindings \\ []) do
     module = schema.__struct__
     fields = module.__schema__(:fields) |> MapSet.new()
     embedded_fields = module.__schema__(:embeds) |> MapSet.new()
@@ -322,7 +335,7 @@ defmodule Flint.Schema do
 
     changeset
     |> validate_required(required_fields)
-    |> validate_fields()
+    |> validate_fields(bindings)
   end
 
   def new(module, params \\ %{}) do
