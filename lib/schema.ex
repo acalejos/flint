@@ -1,6 +1,13 @@
 defmodule Flint.Schema do
+  require Logger
   import Ecto.Changeset
   @error_regex ~r"%{(\w+)}"
+  @required_with_default_warning """
+  You are setting a default value for a field marked as required (!).
+  Be aware that validating required variables happens after casting,
+  and casting will replace any missing fields with their defaults (if specified).
+  These will never fail the `required` validation.
+  """
   @embeds_one_defaults Application.compile_env(Flint, [:embeds_one],
                          defaults_to_struct: true,
                          on_replace: :delete
@@ -82,6 +89,9 @@ defmodule Flint.Schema do
   end
 
   defmacro field!(name, type \\ :string, opts \\ []) do
+    if Keyword.has_key?(opts, :default),
+      do: Logger.warning(@required_with_default_warning)
+
     make_required(__CALLER__.module, name)
 
     quote do
@@ -139,6 +149,9 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_one!(name, schema, opts) do
+    if Keyword.has_key?(opts, :default),
+      do: Logger.warning(@required_with_default_warning)
+
     make_required(__CALLER__.module, name)
 
     quote do
@@ -151,6 +164,9 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_one!(name, schema, opts, do: block) do
+    if Keyword.has_key?(opts, :default),
+      do: Logger.warning(@required_with_default_warning)
+
     make_required(__CALLER__.module, name)
 
     quote do
@@ -215,6 +231,9 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_many!(name, schema, opts) do
+    if Keyword.has_key?(opts, :default),
+      do: Logger.warning(@required_with_default_warning)
+
     make_required(__CALLER__.module, name)
 
     quote do
@@ -227,6 +246,9 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_many!(name, schema, opts, do: block) do
+    if Keyword.has_key?(opts, :default),
+      do: Logger.warning(@required_with_default_warning)
+
     make_required(__CALLER__.module, name)
 
     quote do
