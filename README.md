@@ -209,6 +209,33 @@ end
     (elixir 1.15.7) lib/code.ex:574: Code.with_diagnostics/2
 ```
 
+### Derived Fields
+
+Much like the [previous section](#validate-with-respect-to-other-fields), `derived` values let you define
+expressions with support for custom bindings to include any `field` declarations that occur before the current field.
+
+Derived fields will automatically put the result of the `:derive` expression into the field value. This occurs before
+any other validation, so you can still have access to `field` bindings and even the current derived field value
+within a `:when` validation.
+
+```elixir
+defmodule Test do
+  use Flint
+
+  embedded_schema do
+    field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
+    field! :rating, :integer, when: category == target_category
+    field :score, :integer, gt: 1, lt: 100, when: score > rating, derived: rating + category
+  end
+end
+```
+
+```elixir
+Test.new!(%{category: 1, rating: 80}, target_category: 1)
+
+# %Test{category: 1, rating: 80, score: 81}
+```
+
 ### Options
 
 Currently, the options / validations supported out of the box with `Flint` are all based on validation functions

@@ -2,11 +2,18 @@ defmodule Flint.Schema do
   require Logger
   import Ecto.Changeset
   @error_regex ~r"%{(\w+)}"
+
   @required_with_default_warning """
   You are setting a default value for a field marked as required (!).
   Be aware that validating required variables happens after casting,
   and casting will replace any missing fields with their defaults (if specified).
   These will never fail the `required` validation.
+  """
+
+  @derived_with_default_warning """
+  You are setting a derived field as required (!). This will always fail
+  validation since derived fields are not explicitly set from params. You
+  should use `field` for derived fields.
   """
   @embeds_one_defaults Application.compile_env(Flint, [:embeds_one],
                          defaults_to_struct: true,
@@ -34,7 +41,8 @@ defmodule Flint.Schema do
     :min,
     :max,
     :count,
-    :when
+    :when,
+    :derived
   ]
   @default_aliases [
     lt: :less_than,
@@ -92,6 +100,9 @@ defmodule Flint.Schema do
   defmacro field!(name, type \\ :string, opts \\ []) do
     if Keyword.has_key?(opts, :default),
       do: Logger.warning(@required_with_default_warning)
+
+    if Keyword.has_key?(opts, :derived),
+      do: Logger.warning(@derived_with_default_warning)
 
     make_required(__CALLER__.module, name)
 
@@ -280,12 +291,32 @@ defmodule Flint.Schema do
 
   def validate_fields(changeset, bindings \\ []) do
     module = changeset.data.__struct__
-    bindings = bindings ++ Enum.into(changeset.changes, [])
 
     all_validations = module.__schema__(:validations)
 
     for {field, validations} <- all_validations, reduce: changeset do
       changeset ->
+        {derived_expression, validations} = Keyword.pop(validations, :derived)
+
+        bindings = bindings ++ Enum.into(changeset.changes, [])
+
+        {changeset, bindings} =
+          if derived_expression do
+            {derived_value, _bindings} = Code.eval_quoted(derived_expression, bindings, __ENV__)
+
+            unless is_nil(Ecto.Changeset.get_field(changeset, field)) do
+              Logger.warning("""
+              You are explicitly setting `#{inspect(field)}` which is marked as `:derived`.
+              This will be overwritten by the derived value.
+              """)
+            end
+
+            {Ecto.Changeset.change(changeset, [{field, derived_value}]),
+             [{field, derived_value} | bindings]}
+          else
+            {changeset, bindings}
+          end
+
         {when_condition, validations} = Keyword.pop(validations, :when)
 
         validations =
