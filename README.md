@@ -89,6 +89,14 @@ preferable.
 
 Since a call to `Flint`'s `embedded_schema` or `use Flint, schema: []`  just creates an `Ecto` `embedded_schema` you can use them just as you would any other `Ecto` schemas. You can compose them, apply changesets to them, etc.
 
+## `Flint` Types
+
+`Flint` also comes with some types that are automatically aliased when you `use Flint`.
+
+### `Union`
+
+Union type for Ecto. Allows the field to be any of the specified types.
+
 ## Required Fields
 
 `Flint` adds the convenience bang (`!`) macros (`embed_one!`,`embed_many!`, `field!`) for field declarations within your struct to declare a field as required within its `changeset` function.
@@ -164,7 +172,42 @@ Person.changeset(
 >
 ```
 
-This lets you change the parameters of the validations for each call to `changeset` for more flexibility
+### Validate With Respect to Other Fields
+
+You might find yourself wishing to validate a field conditionally based on the values of other fields. In `Flint`, you
+can do this with any validation! Since all validations already accept parameterized conditions, they also let you refer
+to previously defined fields declared with `field` or `field!` macros. Just use a variable of the same name as the field(s) you want to refer to, and they will be bound to their respective variables.
+
+Additionally, `:when` lets you define an arbitrary boolean expression that will be evaluated and pass the validation if it
+evaluates to a truthy value. You may pass bindings to this condition just as explained [above](#parameterized-validations), and
+refer to previously defined fields as just discussed, but uniquely, `:when` also lets you refer to the current `field` in which
+the `:when` condition is defined. Theoretically, you could write many of the other validations using `:when`, but you will
+receive worse error messages with `:when` than with the dedicated validations.
+
+```elixir
+defmodule Test do
+  use Flint
+
+  embedded_schema do
+    field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
+    field! :rating, :integer, when: category == target_category
+    field! :score, :integer, gt: 1, lt: 100, when: score > rating
+  end
+end
+```
+
+```elixir
+> Test.new!(%{category: :a, rating: 80, score: 10}, target_category: :a)
+
+** (ArgumentError) %Test{category: :a, rating: 80, score: ["Failed `:when` validation"]}
+    (flint 0.0.1) lib/schema.ex:406: Flint.Schema.new!/3
+    (elixir 1.15.7) src/elixir.erl:396: :elixir.eval_external_handler/3
+    (stdlib 5.1.1) erl_eval.erl:750: :erl_eval.do_apply/7
+    (elixir 1.15.7) src/elixir.erl:375: :elixir.eval_forms/4
+    (elixir 1.15.7) lib/module/parallel_checker.ex:112: Module.ParallelChecker.verify/1
+    lib/livebook/runtime/evaluator.ex:622: anonymous fn/3 in Livebook.Runtime.Evaluator.eval/4
+    (elixir 1.15.7) lib/code.ex:574: Code.with_diagnostics/2
+```
 
 ### Options
 
@@ -185,6 +228,7 @@ defined in `Ecto.Changeset`:
 * `:min` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:max` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:count` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:when` - Let's you define an arbitrart boolean condition on the field which can refer to any `field` defined above it or itself.
 
 ### Aliases
 

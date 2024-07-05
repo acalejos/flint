@@ -20,6 +20,8 @@ defmodule Flint do
 
     prelude =
       quote do
+        alias Flint.Types.Union
+
         @behaviour Access
 
         defdelegate fetch(term, key), to: Map
@@ -30,8 +32,11 @@ defmodule Flint do
         def __schema__(:validations), do: @validations
 
         defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Schema
-        def new(params \\ %{}), do: Flint.Schema.new(__MODULE__, params)
-        def new!(params \\ %{}), do: Flint.Schema.new!(__MODULE__, params)
+        def new(params \\ %{}, bindings \\ []), do: Flint.Schema.new(__MODULE__, params, bindings)
+
+        def new!(params \\ %{}, bindings \\ []),
+          do: Flint.Schema.new!(__MODULE__, params, bindings)
+
         defoverridable new: 0, new: 1, new!: 0, new!: 1, changeset: 1, changeset: 2
 
         if Code.ensure_loaded?(Jason) do
