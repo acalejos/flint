@@ -228,7 +228,7 @@ defined in `Ecto.Changeset`:
 * `:min` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:max` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:count` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
-* `:when` - Let's you define an arbitrart boolean condition on the field which can refer to any `field` defined above it or itself.
+* `:when` - Let's you define an arbitrary boolean condition on the field which can refer to any `field` defined above it or itself.
 
 ### Aliases
 
