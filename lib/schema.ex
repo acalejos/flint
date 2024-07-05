@@ -33,7 +33,8 @@ defmodule Flint.Schema do
     :is,
     :min,
     :max,
-    :count
+    :count,
+    :when
   ]
   @default_aliases [
     lt: :less_than,
@@ -279,16 +280,20 @@ defmodule Flint.Schema do
 
   def validate_fields(changeset, bindings \\ []) do
     module = changeset.data.__struct__
+    bindings = bindings ++ Enum.into(changeset.changes, [])
 
     all_validations = module.__schema__(:validations)
 
     for {field, validations} <- all_validations, reduce: changeset do
       changeset ->
+        {when_condition, validations} = Keyword.pop(validations, :when)
+
         validations =
           validations
-          |> Enum.map(fn {k, v} ->
-            {result, _bindings} = Code.eval_quoted(v, bindings, __ENV__)
-            {k, result}
+          |> Enum.map(fn
+            {k, v} ->
+              {result, _bindings} = Code.eval_quoted(v, bindings, __ENV__)
+              {k, result}
           end)
 
         {validate_length_args, validations} =
@@ -318,16 +323,35 @@ defmodule Flint.Schema do
           validate_subset: validate_subset_arg
         ]
 
-        Enum.reduce(validation_args, changeset, fn
-          {_func, nil}, chngset ->
-            chngset
+        changeset =
+          Enum.reduce(validation_args, changeset, fn
+            {_func, nil}, chngset ->
+              chngset
 
-          {_func, []}, chngset ->
-            chngset
+            {_func, []}, chngset ->
+              chngset
 
-          {func, arg}, chngset ->
-            apply(Ecto.Changeset, func, [chngset, field, arg])
-        end)
+            {func, arg}, chngset ->
+              apply(Ecto.Changeset, func, [chngset, field, arg])
+          end)
+
+        {validate_when_condition, _bindings} =
+          try do
+            Code.eval_quoted(
+              when_condition,
+              bindings,
+              __ENV__
+            )
+          rescue
+            _ ->
+              {false, nil}
+          end
+
+        if validate_when_condition do
+          changeset
+        else
+          Ecto.Changeset.add_error(changeset, field, "Failed `:when` validation")
+        end
     end
   end
 
@@ -360,13 +384,13 @@ defmodule Flint.Schema do
     |> validate_fields(bindings)
   end
 
-  def new(module, params \\ %{}) do
-    apply(module, :changeset, [struct!(module), params])
+  def new(module, params \\ %{}, bindings \\ []) do
+    apply(module, :changeset, [struct!(module), params, bindings])
     |> apply_changes()
   end
 
-  def new!(module, params \\ %{}) do
-    changeset = apply(module, :changeset, [struct!(module), params])
+  def new!(module, params \\ %{}, bindings \\ []) do
+    changeset = apply(module, :changeset, [struct!(module), params, bindings])
 
     if changeset.valid? do
       apply_changes(changeset)
