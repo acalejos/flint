@@ -37,7 +37,15 @@ defmodule Flint do
         def new!(params \\ %{}, bindings \\ []),
           do: Flint.Schema.new!(__MODULE__, params, bindings)
 
-        defoverridable new: 0, new: 1, new!: 0, new!: 1, changeset: 1, changeset: 2
+        defoverridable new: 0,
+                       new: 1,
+                       new: 2,
+                       new!: 0,
+                       new!: 1,
+                       new!: 2,
+                       changeset: 1,
+                       changeset: 2,
+                       changeset: 3
 
         if Code.ensure_loaded?(Jason) do
           defimpl Jason.Encoder do
