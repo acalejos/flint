@@ -29,6 +29,7 @@ defmodule Flint do
         defdelegate pop(data, key), to: Map
 
         def __schema__(:required), do: @required
+
         def __schema__(:validations), do: @validations
 
         defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Schema

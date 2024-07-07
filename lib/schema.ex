@@ -42,7 +42,8 @@ defmodule Flint.Schema do
     :max,
     :count,
     :when,
-    :derived
+    :derived,
+    :block
   ]
   @default_aliases [
     lt: :less_than,
@@ -61,7 +62,22 @@ defmodule Flint.Schema do
     obj |> Ecto.embedded_dump(:json)
   end
 
-  defmacro field(name, type \\ :string, opts \\ []) do
+  defmacro field(name, type \\ :string, opts \\ [])
+
+  defmacro field(name, type, do: block) when is_list(block) do
+    quote do
+      field(unquote(name), unquote(type), [], do: unquote(block))
+    end
+  end
+
+  defmacro field(_name, _type, do: _block),
+    do:
+      raise(
+        ArgumentError,
+        "Bad expression in `field do:`. All clauses should be of the format `condition` -> `Error Message`"
+      )
+
+  defmacro field(name, type, opts) do
     opts =
       case type do
         {_, _, [:Ecto, :Enum]} ->
@@ -90,14 +106,46 @@ defmodule Flint.Schema do
     # TODO: validate_validations!(type, validator_opts)
     # Not sure how horrible it would be to implement compile-time checks on these
     if length(validator_opts) != 0,
-      do: Module.put_attribute(__CALLER__.module, :validations, {name, validator_opts})
+      do:
+        Module.put_attribute(
+          __CALLER__.module,
+          :validations,
+          {name, validator_opts}
+        )
 
     quote do
       Ecto.Schema.field(unquote(name), unquote(type), unquote(opts))
     end
   end
 
-  defmacro field!(name, type \\ :string, opts \\ []) do
+  defmacro field(name, type, opts, do: block) do
+    block =
+      block
+      |> Enum.map(fn
+        {:->, _, [[left], right]} ->
+          {left, right}
+
+        _ ->
+          raise ArgumentError,
+                "Bad expression in `field do:`. All clauses should be of the format `condition` -> `Error Message`"
+      end)
+
+    opts = [{:block, block} | opts]
+
+    quote do
+      field(unquote(name), unquote(type), unquote(opts))
+    end
+  end
+
+  defmacro field!(name, type \\ :string, opts \\ [])
+
+  defmacro field!(name, type, do: block) do
+    quote do
+      field!(unquote(name), unquote(type), [], do: unquote(block))
+    end
+  end
+
+  defmacro field!(name, type, opts) do
     if Keyword.has_key?(opts, :default),
       do: Logger.warning(@required_with_default_warning)
 
@@ -108,6 +156,20 @@ defmodule Flint.Schema do
 
     quote do
       field(unquote(name), unquote(type), unquote(opts))
+    end
+  end
+
+  defmacro field!(name, type, opts, do: block) do
+    if Keyword.has_key?(opts, :default),
+      do: Logger.warning(@required_with_default_warning)
+
+    if Keyword.has_key?(opts, :derived),
+      do: Logger.warning(@derived_with_default_warning)
+
+    make_required(__CALLER__.module, name)
+
+    quote do
+      field(unquote(name), unquote(type), unquote(opts), do: unquote(block))
     end
   end
 
@@ -297,6 +359,7 @@ defmodule Flint.Schema do
     for {field, validations} <- all_validations, reduce: changeset do
       changeset ->
         {derived_expression, validations} = Keyword.pop(validations, :derived)
+        {block, validations} = Keyword.pop(validations, :block, [])
 
         bindings = bindings ++ Enum.into(changeset.changes, [])
 
@@ -383,6 +446,32 @@ defmodule Flint.Schema do
         else
           Ecto.Changeset.add_error(changeset, field, "Failed `:when` validation")
         end
+
+        block
+        |> Enum.with_index()
+        |> Enum.reduce(changeset, fn
+          {{quoted_condition, quoted_err}, index}, chngset ->
+            try do
+              {invalid?, _bindings} = Code.eval_quoted(quoted_condition, bindings, __ENV__)
+              {err_msg, _bindings} = Code.eval_quoted(quoted_err, bindings, __ENV__)
+
+              if invalid? do
+                Ecto.Changeset.add_error(chngset, field, err_msg,
+                  validation: :block,
+                  clause: index + 1
+                )
+              else
+                chngset
+              end
+            rescue
+              _ ->
+                Ecto.Changeset.add_error(
+                  chngset,
+                  field,
+                  "Error evaluating expression in Clause ##{index + 1} of `do:` block"
+                )
+            end
+        end)
     end
   end
 
