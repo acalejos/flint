@@ -8,17 +8,21 @@
 
 Practical [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for data validation, coercion, and manipulation.
 
-## Features
+## Feature Overview
 
-* `!` Variants of Ecto `field`, `embeds_one`, and `embeds_many` macros to mark a field as required (see. [Required Fields](#required-fields))
-* Colocated validations, so you can define common validations alongside field declarations (see [Validations](#field-validations))
+* `!` Variants of Ecto `field`, `embeds_one`, and `embeds_many` macros to mark a field as required ([Required Fields](#required-fields))
+* Colocated input transformations let you either transform input fields before validation or derive field values from other fields ([Derived Fields / Input Transformations](#derived-fields--input-transformations))
+* Colocated validations, so you can define common validations alongside field declarations ([Validations](#field-validations))
+* Colocated output transformations let you transform fields after validation ([Mappings / Output Transformations](#mappings--output-transformations))
 * Adds `Access` implementation to all schemas
 * Adds `Jason.Encoder` implementation to all schemas
 * New [`Ecto.Schema` Reflection Functions](https://hexdocs.pm/ecto/Ecto.Schema.html#module-reflection)
   * `__schema__(:required)` - Returns list of fields marked as required (from `!` macros)
+  * `__schema__(:pre_transforms` - `Keyword` mapping of fields to pre-transformations (currently only `:derive` option)
   * `__schema__(:validations)` - `Keyword` mapping of fields to validations
-* Convenient generated function (`changeset`,`new`,`new!`,...) (see. [Generated Functions](#generated-functions))
-* Configurable `Application`-wide defaults for `Ecto.Schema` API (see. [Config](#config))
+  * `__schema__(:post_transforms` - `Keyword` mapping of fields to post-transformations (currently only `:map` option)
+* Convenient generated function (`changeset`,`new`,`new!`,...) ([Generated Functions](#generated-functions))
+* Configurable `Application`-wide defaults for `Ecto.Schema` API ([Config](#config))
 
 ## Installation
 
@@ -44,7 +48,7 @@ for how it should be dumped, which helps when you want the serialized representa
 
 This is useful if you want to make changes in the server-side code without needing to change the client-side (or vice-versa). Or perhaps you want a mapped representation, where instead of an `Ecto.Enum` just converting its atom key to a string when dumped, it gets mapped to an integer, etc.
 
-## Usage
+## Basic Usage
 
 If you want to declare a schema with `Flint`, just `use Flint` within your module, and now you have access to `Flint`'s implementation of the
 `embedded_schema/1` macro.  You can declare an `embedded_schema` within your module as you otherwise would with `Ecto`. Within the `embedded_schema/1` block, you also have access to `Flint`s implementations of `embeds_one`,`embeds_one!`,`embeds_many`, `embeds_many!`, `field`, and `field!`.
@@ -97,6 +101,43 @@ Since a call to `Flint`'s `embedded_schema` or `use Flint, schema: []`  just cre
 
 Union type for Ecto. Allows the field to be any of the specified types.
 
+## Generated Functions
+
+`Flint` provides default implementations for the following functions for any schema declaration. Each of these is overridable.
+
+* `changeset` - Creates a changeset by casting all fields and validating all that were marked as required. If a `:default` key is provided for a field, then any use of a bang (`!`) declaration will essentially be ignored since the cast will fall back to the default before any validations are performed.
+* `new` - Creates a new changeset from the empty module struct and applies the changes (regardless of whether the changeset was valid).
+* `new!` - Same as new, except raises if the changeset is not valid.
+
+### Changeset
+
+At their core, the new `field` and `field!` macros' only additional functionality over the default `Ecto` macros
+is to store the allowed `Flint` options into module attritbutes which are exposed as new reflection functions.
+
+The bulk of the work done in Flint with validations and transformations of data occurs in the generated `changeset`
+function, which leaves it up to the end user whether to use the default implementation, roll their own from scratch
+using the information exposed through the reflection functions, or do something in between (such as using the `Flint.Changeset` APIs).
+
+When you `use Flint`, you declare an overridable `changeset` function for your schema module that by default just
+delegates to the `Flint.Changeset.changeset/3` function.
+
+The `Flint.Changeset.changeset/3` function operates as the following pipeline:
+
+1. Cast all fields (including embeds)
+2. Validate required fields ([Required Fields](#required-fields))
+3. Apply pre-transformations ([Derived Fields / Input Transformations](#derived-fields--input-transformations))
+4. Apply field validations ([Validations](#field-validations))
+5. Apply post-transformations ([Mappings / Output Transformations](#mappings--output-transformations))
+
+If you wish to compose your own `changeset` function, each of these steps has its own API, either from `Ecto` itself
+or exposed through `Flint`:
+
+1. [`Ecto.Changeset.cast/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#cast/4) / [`Ecto.Changeset.cast_embed/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#cast_embed/3)
+2. [`Ecto.Changeset.validate_required/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_required/3)
+3. `Flint.Changeset.apply_pre_transforms/2`
+4. `Flint.Changeset.apply_validations/2`
+5. `Flint.Changeset.apply_post_transforms/2`
+
 ## Required Fields
 
 `Flint` adds the convenience bang (`!`) macros (`embed_one!`,`embed_many!`, `field!`) for field declarations within your struct to declare a field as required within its `changeset` function.
@@ -104,6 +145,50 @@ Union type for Ecto. Allows the field to be any of the specified types.
 `Flint` schemas also have a new reflection function in addition to the normal [`Ecto` reflection functions](https://hexdocs.pm/ecto/Ecto.Schema.html#module-reflection).
 
 * `__schema__(:required)` -- Returns a list of all fields that were marked as required.
+
+## Derived Fields / Input Transformations
+
+`Flint` provides a convenient `:derive` option to express how the field is computed.
+
+**This occurs after casting and before validations.**
+
+Much like the [previous section](#validate-with-respect-to-other-fields), `derived` fields let you define
+expressions with support for custom bindings to include any `field` declarations that occur before the current field.
+
+`:derive` will automatically put the result of the input expression into the field value. This occurs before
+any other validation, so you can still have access to `field` bindings and even the current computed field value
+within a `:when` validation.
+
+You can define a `derived` field with respect to the field itself, in which case it acts as transformation. Typically in
+`Ecto`, incoming transformations of this support would happen at the `cast` step, which means the behavior is determined
+by the type in which you are casting into. `:derive` lets you apply a transformation after casting to change that behavior
+without changing the underlying allowed type.
+
+You can also define a `derived` field with an expression that does not depend on the field, in which case it is
+suggested that you use the `field` macro instead of `field!` since any input in that case would be thrashed by
+the derived value. This means that a field can be completely determined as a product of other fields!
+
+```elixir
+defmodule Test do
+  use Flint
+
+  embedded_schema do
+    field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
+    field! :rating, :integer, when: category == target_category
+    field :score, derive: rating + category, :integer, gt: 1, lt: 100, when: score > rating
+  end
+end
+```
+
+```elixir
+Test.new!(%{category: 1, rating: 80}, target_category: 1)
+
+# %Test{category: 1, rating: 80, score: 81}
+```
+
+While `computed` fields let you derive a field from other fields, you can also use `computed` to effectively
+map the input data before any validations occur, in case you want to do any normalization that would not have
+occurred on cast.
 
 ## Field Validations
 
@@ -213,20 +298,20 @@ end
 
 `Flint` provides some shorthand options for common validation functions (mostly taken from `Ecto.Changeset`)
 
-* `:greater_than` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
-* `:less_than` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
-* `:less_than_or_equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
-* `:greater_than_or_equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
-* `:equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
-* `:not_equal_to` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
-* `:format` (see. [`Ecto.Changeset.validate_format/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_format/4))
-* `:subset_of` (see. [`Ecto.Changeset.validate_subset/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_subset/4))
-* `:in` (see. [`Ecto.Changeset.validate_inlusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_inclusion/4))
-* `:not_in` (see. [`Ecto.Changeset.validate_exclusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_exclusion/4))
-* `:is` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
-* `:min` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
-* `:max` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
-* `:count` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:greater_than` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:less_than` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:less_than_or_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:greater_than_or_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:not_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:format` ([`Ecto.Changeset.validate_format/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_format/4))
+* `:subset_of` ([`Ecto.Changeset.validate_subset/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_subset/4))
+* `:in` ([`Ecto.Changeset.validate_inlusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_inclusion/4))
+* `:not_in` ([`Ecto.Changeset.validate_exclusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_exclusion/4))
+* `:is` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:min` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:max` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:count` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:when` - Let's you define an arbitrary boolean condition on the field which can refer to any `field` defined above it or itself. **NOTE** The `:when` option will output a generic error on failure, so if verbosity is desired, an [advanced validation](#advanced-validations) is more appropriate.
 
 ### Advanced Validations
@@ -292,58 +377,7 @@ If you want to implement your own, you can use `__schema__(:validations)` which 
 If you want to override `changeset` but want to keep the default validation behavior, there is also the `Flint.Schema.validate_fields` function,
 which accepts an `%Ecto.Changetset{}` and optionally bindings, and performs validations using the information stored in `__schema__(:validations)`.
 
-## Input and Output Transformations
-
-### Options
-
-* `:derive` (see. [Derived Fields / Input Mappings](#derived-fields--input-mappings))
-* `:map` (see. [Output Mappings](#output-mappings))
-
-### Derived Fields / Input Mappings
-
-`Flint` provides a convenient `:derive` option to express how the field is computed.
-
-**This occurs after casting and before validations.**
-
-Much like the [previous section](#validate-with-respect-to-other-fields), `derived` fields let you define
-expressions with support for custom bindings to include any `field` declarations that occur before the current field.
-
-`:derive` will automatically put the result of the input expression into the field value. This occurs before
-any other validation, so you can still have access to `field` bindings and even the current computed field value
-within a `:when` validation.
-
-You can define a `derived` field with respect to the field itself, in which case it acts as transformation. Typically in
-`Ecto`, incoming transformations of this support would happen at the `cast` step, which means the behavior is determined
-by the type in which you are casting into. `:derive` lets you apply a transformation after casting to change that behavior
-without changing the underlying allowed type.
-
-You can also define a `derived` field with an expression that does not depend on the field, in which case it is
-suggested that you use the `field` macro instead of `field!` since any input in that case would be thrashed by
-the derived value. This means that a field can be completely determined as a product of other fields!
-
-```elixir
-defmodule Test do
-  use Flint
-
-  embedded_schema do
-    field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
-    field! :rating, :integer, when: category == target_category
-    field :score, derive: rating + category, :integer, gt: 1, lt: 100, when: score > rating
-  end
-end
-```
-
-```elixir
-Test.new!(%{category: 1, rating: 80}, target_category: 1)
-
-# %Test{category: 1, rating: 80, score: 81}
-```
-
-While `computed` fields let you derive a field from other fields, you can also use `computed` to effectively
-map the input data before any validations occur, in case you want to do any normalization that would not have
-occurred on cast.
-
-### Output Mappings
+## Mappings / Output Transformations
 
 `Flint` also lets you declare a mapping to apply to the field after all validations. The same caveats apply to the
 `:map` expression as all other expressions, with the exception that the `:map` function **only** accepts arity-1 anonymous functions
@@ -388,7 +422,7 @@ Character.new!(%{type: "Elf", age: 10}, binding())
 ## Aliases
 
 If you don't like the name of an option, you can provide a compile-time list of aliases to map new option names to existing options
-(see [Validation Options](#basic-validation-options) and [Transformation Options](#input-and-output-transformations)).
+([Validation Options](#basic-validation-options) and [Transformation Options](#input-and-output-transformations)).
 
 In your config, add an `:aliases` key with a `Keyword` value, where each key is the new alias, and the value is an existing option name.
 
@@ -407,14 +441,6 @@ config Flint, aliases: [
 
 **NOTE** If you add your own aliases and want to keep these above defaults, you will have to add them manually to your aliases.
 
-## Generated Functions
-
-`Flint` provides default implementations for the following functions for any schema declaration. Each of these is overridable.
-
-* `changeset` - Creates a changeset by casting all fields and validating all that were marked as required. If a `:default` key is provided for a field, then any use of a bang (`!`) declaration will essentially be ignored since the cast will fall back to the default before any valdiations are performed.
-* `new` - Creates a new changeset from the empty module struct and applies the changes (regardless of whether the changeset was valid).
-* `new!` - Same as new, except raises if the changeset is not valid.
-
 ## Config
 
 You can configure the default options set by `Flint`.
@@ -424,7 +450,7 @@ You can configure the default options set by `Flint`.
 * `embeds_many`: The default arguments when using `embeds_many` or `embeds_many!`. Defaults to `[on_replace: :delete]`
 * `embeds_many!`: The default arguments when using `embeds_many!`. Defaults to `[on_replace: :delete]`
 * `:enum`: The default arguments for an `Ecto.Enum` field. Defaults to `[embed_as: :dumped]`.
-* `:aliases`: See [Aliases](#aliases)
+* `:aliases`: [Aliases](#aliases)
 
 You can also configure any aliases you want to use for schema validations.
 
@@ -449,7 +475,7 @@ Flint.Schema.dump(book)
 # %{genre: 0}
 ```
 
-In this example, you can see how you can share multiple representations of the same data using this distinction.
+In this example, you can how you can share multiple representations of the same data using this distinction.
 
 You can also implement your own `Ecto.Type` and further customize this:
 

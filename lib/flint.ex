@@ -17,6 +17,8 @@ defmodule Flint do
 
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
     Module.register_attribute(__CALLER__.module, :validations, accumulate: true)
+    Module.register_attribute(__CALLER__.module, :pre_transforms, accumulate: true)
+    Module.register_attribute(__CALLER__.module, :post_transforms, accumulate: true)
 
     prelude =
       quote do
@@ -31,10 +33,11 @@ defmodule Flint do
         defdelegate pop(data, key), to: Map
 
         def __schema__(:required), do: @required
-
         def __schema__(:validations), do: @validations
+        def __schema__(:pre_transforms), do: @pre_transforms
+        def __schema__(:post_transforms), do: @post_transforms
 
-        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Schema
+        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Changeset
         def new(params \\ %{}, bindings \\ []), do: Flint.Schema.new(__MODULE__, params, bindings)
 
         def new!(params \\ %{}, bindings \\ []),
