@@ -186,10 +186,6 @@ Test.new!(%{category: 1, rating: 80}, target_category: 1)
 # %Test{category: 1, rating: 80, score: 81}
 ```
 
-While `computed` fields let you derive a field from other fields, you can also use `computed` to effectively
-map the input data before any validations occur, in case you want to do any normalization that would not have
-occurred on cast.
-
 ## Field Validations
 
 ### Basic Validations
@@ -391,7 +387,7 @@ defmodule Character do
   use Flint
   
   embedded_schema do
-    computed :type, :string, &String.downcase/1, map: String.upcase(type) do
+    field! :type, :string, derive: &String.downcase/1, map: String.upcase(type) do
       type not in ~w[elf human] -> "Expected elf or human, got: #{type}"
     end
 
