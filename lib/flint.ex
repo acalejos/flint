@@ -22,6 +22,8 @@ defmodule Flint do
       quote do
         alias Flint.Types.Union
 
+        @after_compile Flint.Schema
+
         @behaviour Access
 
         defdelegate fetch(term, key), to: Map

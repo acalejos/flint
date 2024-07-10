@@ -10,23 +10,18 @@ defmodule Flint.Schema do
   These will never fail the `required` validation.
   """
 
-  @derived_with_default_warning """
-  You are setting a derived field as required (!). This will always fail
-  validation since derived fields are not explicitly set from params. You
-  should use `field` for derived fields.
-  """
-  @embeds_one_defaults Application.compile_env(Flint, [:embeds_one],
+  @embeds_one_defaults Application.compile_env(:flint, [:embeds_one],
                          defaults_to_struct: true,
                          on_replace: :delete
                        )
-  @embeds_one_bang_defaults Application.compile_env(Flint, [:embeds_one!],
+  @embeds_one_bang_defaults Application.compile_env(:flint, [:embeds_one!],
                               defaults_to_struct: false,
                               on_replace: :delete
                             )
-  @embeds_many_defaults Application.compile_env(Flint, [:embeds_many], on_replace: :delete)
-  @embeds_many_bang_defaults Application.compile_env(Flint, [:embeds_many!], on_replace: :delete)
-  @enum_defaults Application.compile_env(Flint, [:enum], embed_as: :dumped)
-  @validation_opts [
+  @embeds_many_defaults Application.compile_env(:flint, [:embeds_many], on_replace: :delete)
+  @embeds_many_bang_defaults Application.compile_env(:flint, [:embeds_many!], on_replace: :delete)
+  @enum_defaults Application.compile_env(:flint, [:enum], embed_as: :dumped)
+  @field_opts [
     :greater_than,
     :less_than,
     :less_than_or_equal_to,
@@ -42,8 +37,9 @@ defmodule Flint.Schema do
     :max,
     :count,
     :when,
-    :derived,
-    :block
+    :block,
+    :derive,
+    :map
   ]
   @default_aliases [
     lt: :less_than,
@@ -51,9 +47,43 @@ defmodule Flint.Schema do
     le: :less_than_or_equal_to,
     ge: :greater_than_or_equal_to,
     eq: :equal_to,
-    neq: :not_equal_to
+    ne: :not_equal_to
   ]
-  @aliases Application.compile_env(Flint, :aliases, @default_aliases)
+  @aliases Application.compile_env(:flint, :aliases, @default_aliases)
+
+  # I think this is the best way to mimic the parent environment to let you write expressions
+  # as though they are taking place inside the parent schema.
+  # I considered altering the `embedded_schema` macro to do these imports, but it's being
+  # defined while the parent schema is being defined and it will not be available yet
+  def __after_compile__(env, _bytecode) do
+    imports =
+      (env.functions ++ env.macros)
+      |> Enum.group_by(fn {module, _} -> module end)
+      |> Enum.map(fn {module, lists} ->
+        items =
+          lists
+          |> Enum.flat_map(fn {_, items} -> items end)
+          # Remove duplicates if any
+          |> Enum.uniq()
+
+        quote do
+          import unquote(module), only: unquote(items)
+        end
+      end)
+
+    contents =
+      quote do
+        def env do
+          import unquote(env.module)
+          (unquote_splicing(imports))
+          __ENV__
+        end
+      end
+
+    Module.concat(env.module, Env)
+    |> Module.create(contents, Macro.Env.location(env))
+  end
+
   defp make_required(module, name) do
     Module.put_attribute(module, :required, name)
   end
@@ -87,7 +117,7 @@ defmodule Flint.Schema do
           opts
       end
 
-    {validator_opts, opts} = Keyword.split(opts, @validation_opts)
+    {validator_opts, opts} = Keyword.split(opts, @field_opts)
     {alias_opts, opts} = Keyword.split(opts, Keyword.keys(@aliases))
 
     validator_opts =
@@ -95,9 +125,9 @@ defmodule Flint.Schema do
         Enum.map(alias_opts, fn {als, opt} ->
           mapped = Keyword.get(@aliases, als)
 
-          unless mapped in @validation_opts do
+          unless mapped in @field_opts do
             raise ArgumentError,
-                  "Alias #{inspect(als)} in field #{inspect(name)} mapped to invalid option #{inspect(mapped)}. Must be mapped to a value in #{inspect(@validation_opts)}"
+                  "Alias #{inspect(als)} in field #{inspect(name)} mapped to invalid option #{inspect(mapped)}. Must be mapped to a value in #{inspect(@field_opts)}"
           end
 
           {mapped, opt}
@@ -149,9 +179,6 @@ defmodule Flint.Schema do
     if Keyword.has_key?(opts, :default),
       do: Logger.warning(@required_with_default_warning)
 
-    if Keyword.has_key?(opts, :derived),
-      do: Logger.warning(@derived_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -162,9 +189,6 @@ defmodule Flint.Schema do
   defmacro field!(name, type, opts, do: block) do
     if Keyword.has_key?(opts, :default),
       do: Logger.warning(@required_with_default_warning)
-
-    if Keyword.has_key?(opts, :derived),
-      do: Logger.warning(@derived_with_default_warning)
 
     make_required(__CALLER__.module, name)
 
@@ -197,7 +221,7 @@ defmodule Flint.Schema do
     quote do
       {schema, opts} =
         Flint.Schema.__embeds_module__(
-          __ENV__,
+          env,
           unquote(schema),
           unquote(opts) ++ unquote(@embeds_one_defaults),
           unquote(Macro.escape(block))
@@ -279,7 +303,7 @@ defmodule Flint.Schema do
     quote do
       {schema, opts} =
         Flint.Schema.__embeds_module__(
-          __ENV__,
+          env,
           unquote(schema),
           unquote(opts) ++ unquote(@embeds_many_bang_defaults),
           unquote(Macro.escape(block))
@@ -353,29 +377,44 @@ defmodule Flint.Schema do
 
   def validate_fields(changeset, bindings \\ []) do
     module = changeset.data.__struct__
+    # This env is setup to mimic the "parent" module's environment
+    env = Module.concat(module, Env) |> apply(:env, [])
 
     all_validations = module.__schema__(:validations)
 
     for {field, validations} <- all_validations, reduce: changeset do
       changeset ->
-        {derived_expression, validations} = Keyword.pop(validations, :derived)
+        {derived_expression, validations} = Keyword.pop(validations, :derive)
+        {map_expression, validations} = Keyword.pop(validations, :map)
         {block, validations} = Keyword.pop(validations, :block, [])
 
         bindings = bindings ++ Enum.into(changeset.changes, [])
 
         {changeset, bindings} =
           if derived_expression do
-            {derived_value, _bindings} = Code.eval_quoted(derived_expression, bindings, __ENV__)
+            {derived_value, _bindings} = Code.eval_quoted(derived_expression, bindings, env)
 
-            unless is_nil(Ecto.Changeset.get_field(changeset, field)) do
-              Logger.warning("""
-              You are explicitly setting `#{inspect(field)}` which is marked as `:derived`.
-              This will be overwritten by the derived value.
-              """)
-            end
+            derived_value =
+              if is_function(derived_value) do
+                case :erlang.fun_info(derived_value)[:arity] do
+                  0 ->
+                    apply(derived_value, [])
 
-            {Ecto.Changeset.change(changeset, [{field, derived_value}]),
-             [{field, derived_value} | bindings]}
+                  1 when not is_nil(field) ->
+                    apply(derived_value, [
+                      Ecto.Changeset.fetch_change!(changeset, field)
+                    ])
+
+                  _ ->
+                    raise ArgumentError,
+                          "Anonymous functions provided to `:derive` must be either 0-arity or an input value for the field must be provided."
+                end
+              else
+                derived_value
+              end
+
+            {Ecto.Changeset.put_change(changeset, field, derived_value),
+             Keyword.put(bindings, field, derived_value)}
           else
             {changeset, bindings}
           end
@@ -386,7 +425,7 @@ defmodule Flint.Schema do
           validations
           |> Enum.map(fn
             {k, v} ->
-              {result, _bindings} = Code.eval_quoted(v, bindings, __ENV__)
+              {result, _bindings} = Code.eval_quoted(v, bindings, env)
               {k, result}
           end)
 
@@ -434,7 +473,7 @@ defmodule Flint.Schema do
             Code.eval_quoted(
               when_condition,
               bindings,
-              __ENV__
+              env
             )
           rescue
             _ ->
@@ -447,31 +486,75 @@ defmodule Flint.Schema do
           Ecto.Changeset.add_error(changeset, field, "Failed `:when` validation")
         end
 
-        block
-        |> Enum.with_index()
-        |> Enum.reduce(changeset, fn
-          {{quoted_condition, quoted_err}, index}, chngset ->
-            try do
-              {invalid?, _bindings} = Code.eval_quoted(quoted_condition, bindings, __ENV__)
-              {err_msg, _bindings} = Code.eval_quoted(quoted_err, bindings, __ENV__)
+        changeset =
+          block
+          |> Enum.with_index()
+          |> Enum.reduce(changeset, fn
+            {{quoted_condition, quoted_err}, index}, chngset ->
+              try do
+                {invalid?, _bindings} = Code.eval_quoted(quoted_condition, bindings, env)
 
-              if invalid? do
-                Ecto.Changeset.add_error(chngset, field, err_msg,
-                  validation: :block,
-                  clause: index + 1
-                )
-              else
-                chngset
+                invalid? =
+                  if is_function(invalid?) do
+                    case :erlang.fun_info(invalid?)[:arity] do
+                      0 ->
+                        apply(invalid?, [])
+
+                      1 when not is_nil(field) ->
+                        apply(invalid?, [Ecto.Changeset.fetch_change!(changeset, field)])
+
+                      _ ->
+                        raise ArgumentError,
+                              "Anonymous functions in validation clause must be either 0-arity or an input value for the field must be provided."
+                    end
+                  else
+                    invalid?
+                  end
+
+                {err_msg, _bindings} = Code.eval_quoted(quoted_err, bindings, env)
+
+                if invalid? do
+                  Ecto.Changeset.add_error(chngset, field, err_msg,
+                    validation: :block,
+                    clause: index + 1
+                  )
+                else
+                  chngset
+                end
+              rescue
+                _ ->
+                  Ecto.Changeset.add_error(
+                    chngset,
+                    field,
+                    "Error evaluating expression in Clause ##{index + 1} of `do:` block"
+                  )
               end
-            rescue
-              _ ->
-                Ecto.Changeset.add_error(
-                  chngset,
-                  field,
-                  "Error evaluating expression in Clause ##{index + 1} of `do:` block"
-                )
+          end)
+
+        if is_nil(map_expression) do
+          changeset
+        else
+          {mapped, _bindings} = Code.eval_quoted(map_expression, bindings, env)
+
+          mapped =
+            if is_function(mapped) do
+              case :erlang.fun_info(mapped)[:arity] do
+                1 when not is_nil(field) ->
+                  apply(mapped, [Ecto.Changeset.fetch_change!(changeset, field)])
+
+                1 when is_nil(field) ->
+                  nil
+
+                _ ->
+                  raise ArgumentError,
+                        ":map option only accepts arity-1 anonymous function"
+              end
+            else
+              mapped
             end
-        end)
+
+          Ecto.Changeset.put_change(changeset, field, mapped)
+        end
     end
   end
 
@@ -498,6 +581,13 @@ defmodule Flint.Schema do
           changeset
           |> cast_embed(field, required: field in required_embeds)
       end
+
+    # TODO This should look more like:
+    # changeset
+    # |> validate_required(required_fields)
+    # |> apply_derives()
+    # |> validate_fields(bindings)
+    # |> apply_maps()
 
     changeset
     |> validate_required(required_fields)

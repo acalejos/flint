@@ -209,37 +209,9 @@ end
     (elixir 1.15.7) lib/code.ex:574: Code.with_diagnostics/2
 ```
 
-### Derived Fields
+### Basic Validation Options
 
-Much like the [previous section](#validate-with-respect-to-other-fields), `derived` values let you define
-expressions with support for custom bindings to include any `field` declarations that occur before the current field.
-
-Derived fields will automatically put the result of the `:derive` expression into the field value. This occurs before
-any other validation, so you can still have access to `field` bindings and even the current derived field value
-within a `:when` validation.
-
-```elixir
-defmodule Test do
-  use Flint
-
-  embedded_schema do
-    field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
-    field! :rating, :integer, when: category == target_category
-    field :score, :integer, gt: 1, lt: 100, when: score > rating, derived: rating + category
-  end
-end
-```
-
-```elixir
-Test.new!(%{category: 1, rating: 80}, target_category: 1)
-
-# %Test{category: 1, rating: 80, score: 81}
-```
-
-### Options
-
-Currently, the options / validations supported out of the box with `Flint` are all based on validation functions
-defined in `Ecto.Changeset`:
+`Flint` provides some shorthand options for common validation functions (mostly taken from `Ecto.Changeset`)
 
 * `:greater_than` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
 * `:less_than` (see. [`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
@@ -255,28 +227,58 @@ defined in `Ecto.Changeset`:
 * `:min` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:max` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 * `:count` (see. [`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
-* `:when` - Let's you define an arbitrary boolean condition on the field which can refer to any `field` defined above it or itself.
+* `:when` - Let's you define an arbitrary boolean condition on the field which can refer to any `field` defined above it or itself. **NOTE** The `:when` option will output a generic error on failure, so if verbosity is desired, an [advanced validation](#advanced-validations) is more appropriate.
 
-### Aliases
+### Advanced Validations
 
-If you don't like the name of an option, you can provide a compile-time list of aliases to map new option names to [existing options](#options).
-
-In your config, add an `:aliases` key with a `Keyword` value, where each key is the new alias, and the value is an existing option name.
-
-For example, these are default aliases implemented in `Flint`:
+In `Flint`, the `field` and `field!` macros also now accept an optional `do` block to define condition/error pairs.
 
 ```elixir
-config Flint, aliases: [
-    lt: :less_than,
-    gt: :greater_than,
-    le: :less_than_or_equal_to,
-    ge: :greater_than_or_equal_to,
-    eq: :equal_to,
-    neq: :not_equal_to
-  ]
+  embedded_schema do
+    field! :type, :string do
+      type not in ~w[elf human] -> "Expected elf or human, got: #{type}"
+    end
+
+    field! :age, :integer do
+      age < 0 ->
+        "Nobody can have a negative age"
+
+      type == "elf" and age > max_elf_age ->
+        "Attention! The elf has become a bug! Should be dead already!"
+
+      type == "human" and age > max_human_age ->
+        "Expected human to have up to #{max_human_age}, got: #{age}"
+    end
+  end
 ```
 
-**NOTE** If you add your own aliases and want to keep these above defaults, you will have to add them manually to your aliases.
+```elixir
+max_elf_age = 400
+max_human_age = 120
+Character.new!(%{type: "elf", age: 10}, binding())
+```
+
+```elixir
+** (ArgumentError) %Character{type: ["Expected elf or human, got: orc"], age: 10}
+    (flint 0.0.1) lib/schema.ex:617: Flint.Schema.new!/3
+    (elixir 1.15.7) src/elixir.erl:396: :elixir.eval_external_handler/3
+    (stdlib 5.1.1) erl_eval.erl:750: :erl_eval.do_apply/7
+    (elixir 1.15.7) src/elixir.erl:375: :elixir.eval_forms/4
+    (elixir 1.15.7) lib/module/parallel_checker.ex:112: Module.ParallelChecker.verify/1
+    lib/livebook/runtime/evaluator.ex:622: anonymous fn/3 in Livebook.Runtime.Evaluator.eval/4
+    (elixir 1.15.7) lib/code.ex:574: Code.with_diagnostics/2
+```
+
+The `:do` block accepts a list of validation clauses, where is clause is of the form:
+
+`failure condition -> Error Message`
+
+In the `:do` block expressions, the same rules apply as mentioned across this documentation. You can pass
+bindings to apply to the expression, and field name bindings will automatically be passed to the expression
+so you can just use the field names as variables.
+
+Additionally, you will have access to all local functions and imported functions that the parent module would
+have, so you can write expressions as you would in the parent module.
 
 ### `__schema__(:validations)`
 
@@ -289,6 +291,121 @@ If you want to implement your own, you can use `__schema__(:validations)` which 
 
 If you want to override `changeset` but want to keep the default validation behavior, there is also the `Flint.Schema.validate_fields` function,
 which accepts an `%Ecto.Changetset{}` and optionally bindings, and performs validations using the information stored in `__schema__(:validations)`.
+
+## Input and Output Transformations
+
+### Options
+
+* `:derive` (see. [Derived Fields / Input Mappings](#derived-fields--input-mappings))
+* `:map` (see. [Output Mappings](#output-mappings))
+
+### Derived Fields / Input Mappings
+
+`Flint` provides a convenient `:derive` option to express how the field is computed.
+
+**This occurs after casting and before validations.**
+
+Much like the [previous section](#validate-with-respect-to-other-fields), `derived` fields let you define
+expressions with support for custom bindings to include any `field` declarations that occur before the current field.
+
+`:derive` will automatically put the result of the input expression into the field value. This occurs before
+any other validation, so you can still have access to `field` bindings and even the current computed field value
+within a `:when` validation.
+
+You can define a `derived` field with respect to the field itself, in which case it acts as transformation. Typically in
+`Ecto`, incoming transformations of this support would happen at the `cast` step, which means the behavior is determined
+by the type in which you are casting into. `:derive` lets you apply a transformation after casting to change that behavior
+without changing the underlying allowed type.
+
+You can also define a `derived` field with an expression that does not depend on the field, in which case it is
+suggested that you use the `field` macro instead of `field!` since any input in that case would be thrashed by
+the derived value. This means that a field can be completely determined as a product of other fields!
+
+```elixir
+defmodule Test do
+  use Flint
+
+  embedded_schema do
+    field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
+    field! :rating, :integer, when: category == target_category
+    field :score, derive: rating + category, :integer, gt: 1, lt: 100, when: score > rating
+  end
+end
+```
+
+```elixir
+Test.new!(%{category: 1, rating: 80}, target_category: 1)
+
+# %Test{category: 1, rating: 80, score: 81}
+```
+
+While `computed` fields let you derive a field from other fields, you can also use `computed` to effectively
+map the input data before any validations occur, in case you want to do any normalization that would not have
+occurred on cast.
+
+### Output Mappings
+
+`Flint` also lets you declare a mapping to apply to the field after all validations. The same caveats apply to the
+`:map` expression as all other expressions, with the exception that the `:map` function **only** accepts arity-1 anonymous functions
+or non-anonymous function expressions (eg. using variable replacement).
+
+In the following example, `computed` is used to normalize incoming strings to downcase to prepare for the validation, then the output
+is mapped to the uppercase string using the `:map` option.
+
+```elixir
+defmodule Character do
+  use Flint
+  
+  embedded_schema do
+    computed :type, :string, &String.downcase/1, map: String.upcase(type) do
+      type not in ~w[elf human] -> "Expected elf or human, got: #{type}"
+    end
+
+    field! :age, :integer do
+      age < 0 ->
+        "Nobody can have a negative age"
+
+      type == "elf" and age > max_elf_age ->
+        "Attention! The elf has become a bug! Should be dead already!"
+
+      type == "human" and age > max_human_age ->
+        "Expected human to have up to #{max_human_age}, got: #{age}"
+    end
+  end
+end
+```
+
+```elixir
+max_elf_age = 400
+max_human_age = 120
+Character.new!(%{type: "Elf", age: 10}, binding())
+```
+
+```elixir
+%Character{type: "ELF", age: 10}
+```
+
+## Aliases
+
+If you don't like the name of an option, you can provide a compile-time list of aliases to map new option names to existing options
+(see [Validation Options](#basic-validation-options) and [Transformation Options](#input-and-output-transformations)).
+
+In your config, add an `:aliases` key with a `Keyword` value, where each key is the new alias, and the value is an existing option name.
+
+For example, these are default aliases implemented in `Flint`:
+
+```elixir
+config Flint, aliases: [
+    lt: :less_than,
+    gt: :greater_than,
+    le: :less_than_or_equal_to,
+    ge: :greater_than_or_equal_to,
+    eq: :equal_to,
+    ne: :not_equal_to
+  ]
+```
+
+**NOTE** If you add your own aliases and want to keep these above defaults, you will have to add them manually to your aliases.
 
 ## Generated Functions
 
