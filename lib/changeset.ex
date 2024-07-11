@@ -16,11 +16,11 @@ defmodule Flint.Changeset do
 
           derived_value =
             if is_function(derived_value) do
-              case :erlang.fun_info(derived_value)[:arity] do
-                0 ->
+              case Function.info(derived_value, :arity) do
+                {:arity, 0} ->
                   apply(derived_value, [])
 
-                1 when not is_nil(field) ->
+                {:arity, 1} when not is_nil(field) ->
                   apply(derived_value, [
                     fetch_change!(changeset, field)
                   ])
@@ -57,11 +57,11 @@ defmodule Flint.Changeset do
 
           mapped =
             if is_function(mapped) do
-              case :erlang.fun_info(mapped)[:arity] do
-                1 when not is_nil(field) ->
+              case Function.info(mapped, :arity) do
+                {:arity, 1} when not is_nil(field) ->
                   apply(mapped, [fetch_change!(changeset, field)])
 
-                1 when is_nil(field) ->
+                {:arity, 1} when is_nil(field) ->
                   nil
 
                 _ ->
@@ -163,11 +163,11 @@ defmodule Flint.Changeset do
 
               invalid? =
                 if is_function(invalid?) do
-                  case :erlang.fun_info(invalid?)[:arity] do
-                    0 ->
+                  case Function.info(invalid?, :arity) do
+                    {:arity, 0} ->
                       apply(invalid?, [])
 
-                    1 when not is_nil(field) ->
+                    {:arity, 1} when not is_nil(field) ->
                       apply(invalid?, [fetch_change!(changeset, field)])
 
                     _ ->

@@ -32,10 +32,10 @@ defmodule Flint do
         defdelegate get_and_update(term, key, fun), to: Map
         defdelegate pop(data, key), to: Map
 
-        def __schema__(:required), do: @required
-        def __schema__(:validations), do: @validations
-        def __schema__(:pre_transforms), do: @pre_transforms
-        def __schema__(:post_transforms), do: @post_transforms
+        def __schema__(:required), do: @required |> Enum.reverse()
+        def __schema__(:validations), do: @validations |> Enum.reverse()
+        def __schema__(:pre_transforms), do: @pre_transforms |> Enum.reverse()
+        def __schema__(:post_transforms), do: @post_transforms |> Enum.reverse()
 
         defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Changeset
         def new(params \\ %{}, bindings \\ []), do: Flint.Schema.new(__MODULE__, params, bindings)
