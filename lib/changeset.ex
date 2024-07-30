@@ -204,7 +204,14 @@ defmodule Flint.Changeset do
     module = schema.__struct__
     fields = module.__schema__(:fields) |> MapSet.new()
     embedded_fields = module.__schema__(:embeds) |> MapSet.new()
-    params = if is_struct(params), do: Map.from_struct(params), else: params
+
+    params =
+      case params do
+        %Ecto.Changeset{params: params} -> params
+        s when is_struct(s) -> Map.from_struct(params)
+        _ -> params
+      end
+
     required = module.__schema__(:required)
 
     fields = fields |> MapSet.difference(embedded_fields)
@@ -221,7 +228,10 @@ defmodule Flint.Changeset do
       for field <- embedded_fields, reduce: changeset do
         changeset ->
           changeset
-          |> cast_embed(field, required: field in required_embeds)
+          |> cast_embed(field,
+            required: field in required_embeds,
+            with: &changeset(&1, &2, bindings)
+          )
       end
 
     changeset

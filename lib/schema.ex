@@ -212,7 +212,9 @@ defmodule Flint.Schema do
 
   defmacro embeds_one(name, schema, do: block) do
     quote do
-      embeds_one(unquote(name), unquote(schema), unquote(@embeds_one_defaults), do: unquote(block))
+      embeds_one(unquote(name), unquote(schema), unquote(@embeds_one_defaults),
+        do: unquote(block)
+      )
     end
   end
 
@@ -232,7 +234,7 @@ defmodule Flint.Schema do
     quote do
       {schema, opts} =
         Flint.Schema.__embeds_module__(
-          env,
+          __ENV__,
           unquote(schema),
           unquote(opts) ++ unquote(@embeds_one_defaults),
           unquote(Macro.escape(block))
@@ -314,7 +316,7 @@ defmodule Flint.Schema do
     quote do
       {schema, opts} =
         Flint.Schema.__embeds_module__(
-          env,
+          __ENV__,
           unquote(schema),
           unquote(opts) ++ unquote(@embeds_many_bang_defaults),
           unquote(Macro.escape(block))

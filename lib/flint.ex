@@ -28,8 +28,11 @@ defmodule Flint do
 
         @behaviour Access
 
+        @impl true
         defdelegate fetch(term, key), to: Map
+        @impl true
         defdelegate get_and_update(term, key, fun), to: Map
+        @impl true
         defdelegate pop(data, key), to: Map
 
         def __schema__(:required), do: @required |> Enum.reverse()
@@ -62,7 +65,6 @@ defmodule Flint do
         end
 
         use Ecto.Schema
-        import Ecto.Changeset
         import Ecto.Schema, except: [embedded_schema: 1]
         import Flint.Schema, only: [embedded_schema: 1]
 
