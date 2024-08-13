@@ -1,6 +1,13 @@
 defmodule Flint.Types.Union do
   @moduledoc """
-  Union type for Ecto. Allows the field to be any of the specified types
+  Union type for Ecto. Allows the field to be any of the specified types.
+
+  This is particularly useful if you want to allow one of multiple types and preserve the type of the
+  input, so long as it adheres to the type (rather than forcing a cast).
+
+  For example, suppose you want to allow an input to be a float, or an integer, but you want to
+  preserve whichever type is passed (keep floats as floats and keep integers as integers), you could
+  use a `Union`.
 
   ## Options
   * `:oneof` - Allowed types. Can be any valid `Ecto` type (including custom types). Required.
@@ -8,6 +15,35 @@ defmodule Flint.Types.Union do
   they appear in the list. If `false`, `Flint` will attempt to determine if the value maps to a
   valid `Ecto` type before casting and will prefer that type (if it appears in `:oneof`). Defaults
   to `false`.
+
+  ## Example
+
+  ```elixir
+  defmodule Character do
+    use Flint
+
+    embedded_schema do
+      field! :name, :string
+      field! :strength, Union, oneof: [:integer, :float]
+    end
+  end
+  ```
+
+  ```elixir
+  Character.new!(%{name: "Elf", strength: 10})
+  ```
+
+  ```
+  %Character{name: "Elf", strength: 10}
+  ```
+
+  ```elixir
+  Character.new!(%{name: "Elf", strength: 10.0})
+  ```
+
+  ```
+  %Character{name: "Elf", strength: 10.0}
+  ```
   """
   use Ecto.ParameterizedType
 

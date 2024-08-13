@@ -1,6 +1,19 @@
-defmodule Flint.Changeset do
+defmodule Flint.Pipeline do
+  @moduledoc """
+  The core pipeline of Flint. `Flint.Pipeline` uses the module attributes that are collected when using the `Flint.Schema`
+  macros to perform transformations and validations.
+
+  See the `Pipeline` section of the `Flint` documentation for more information.
+  """
   import Ecto.Changeset
 
+  @doc """
+  Applies transformations to each field according to the `:derive` options passed in the schema specification.
+
+  These transformations are applied after casting, but before validations when used within the default `Flint.Pipeline.changeset` implementation.
+
+  Accepts optional bindings which are passed to evaluated code.
+  """
   def apply_pre_transforms(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
@@ -40,6 +53,13 @@ defmodule Flint.Changeset do
     end
   end
 
+  @doc """
+  Applies transformations to each field according to the `:map` options passed in the schema specification.
+
+  These transformations are applied after validations when used within the default `Flint.Pipeline.changeset` implementation.
+
+  Accepts optional bindings which are passed to evaluated code.
+  """
   def apply_post_transforms(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
@@ -77,6 +97,11 @@ defmodule Flint.Changeset do
     end
   end
 
+  @doc """
+  Applies validations to each field according to the options passed in the schema specification.
+
+  See the `Field Validations` section of the README for more information on validation details.
+  """
   def apply_validations(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
@@ -200,6 +225,17 @@ defmodule Flint.Changeset do
     end
   end
 
+  @doc """
+  Given a `Flint` (or `Ecto`) schema and params (can be a map, struct of the given schema, or an existing changeset),
+  applies all steps of the `Flint.Pipeline` to generate a new changeset.
+
+  This function casts all fields (recursively casting all embeds using this same function),
+  validates required fields (specified using the bang (`!`) macros exposed by `Flint`),
+  applies pre-transformations, validations, and post-transformations, before
+  outputting the resulting `Ecto.Changeset`.
+
+  See the `Pipeline` section of the `README` for more details.
+  """
   def changeset(schema, params \\ %{}, bindings \\ []) do
     module = schema.__struct__
     fields = module.__schema__(:fields) |> MapSet.new()

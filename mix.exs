@@ -4,7 +4,8 @@ defmodule Flint.MixProject do
   def project do
     [
       app: :flint,
-      version: "0.0.1",
+      name: "Flint",
+      version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -12,22 +13,26 @@ defmodule Flint.MixProject do
         "Practical Ecto embedded schemas for data validation, coercion, and manipulation.",
       source_url: "https://github.com/acalejos/flint",
       homepage_url: "https://github.com/acalejos/flint",
-      package: package()
+      package: package(),
+      docs: docs(),
+      preferred_cli_env: [
+        docs: :docs,
+        "hex.publish": :docs
+      ]
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ecto, github: "elixir-ecto/ecto", ref: "master"},
-      {:jason, "~> 1.4", optional: true}
+      {:ecto, "~> 3.12"},
+      {:jason, "~> 1.4", optional: true},
+      {:ex_doc, "~> 0.31.0", only: :docs}
     ]
   end
 
@@ -36,6 +41,15 @@ defmodule Flint.MixProject do
       maintainers: ["Andres Alejos"],
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/acalejos/flint"}
+    ]
+  end
+
+  defp docs do
+    [
+      main: "Flint",
+      groups_for_extras: [
+        Notebooks: Path.wildcard("notebooks/*.livemd")
+      ]
     ]
   end
 end

@@ -3,14 +3,112 @@
 ```elixir
 Mix.install(
   [
-    {:flint, github: "acalejos/flint"},
-    {:jason, "~> 1.4"}
+    # {:flint, github: "acalejos/flint"},
+    # {:flint, path: "/Users/andres/Documents/flint"},
+    {:jason, "~> 1.4"},
+    {:livebook, "~> 0.13.3"}
+    # {:merquery, github: "acalejos/merquery"}
   ],
+  force: true,
   consolidate_protocols: false
 )
 ```
 
 ## Declare a Schema
+
+```elixir
+Livebook.Notebook.Cell.Code.new()
+```
+
+```elixir
+defmodule Test do
+  defmacro __using__(_opts) do
+    quote do
+      import Kernel, except: [=~: 2]
+      import Test
+    end
+  end
+
+  def left =~ "" when is_binary(left), do: true
+
+  def left =~ right when is_binary(left) and is_binary(right) do
+    :binary.match(left, right) != :nomatch
+  end
+
+  def left =~ right when is_binary(left) do
+    Regex.match?(right, left)
+  end
+
+  def left =~ right do
+    if is_nil(right), do: left
+  end
+end
+```
+
+```elixir
+use Test
+
+a =~ if(false, do: 1)
+```
+
+```elixir
+defmodule Character do
+  use Flint
+
+  def strength("human", age) when age > 0 when age < 120, do: 50
+
+  def strength("elf", age) when age > 0 when age < 100, do: 30
+  def strength("elf", age) when age > 100 when age < 200, do: 60
+  def strength("elf", age) when age > 200 when age < 300, do: 80
+  def strength("elf", age) when age > 300 when age < 350, do: 95
+  def strength("elf", age) when age > 350 when age < 400, do: 75
+  def strength(_, _), do: nil
+
+  embedded_schema do
+    field! :type, :string, derive: &String.downcase/1, map: String.upcase(type) do
+      type not in ~w[elf human] -> "Expected elf or human, got: #{type}"
+    end
+
+    field! :age, :integer do
+      age < 0 ->
+        "Nobody can have a negative age"
+
+      type == "elf" and age > max_elf_age ->
+        "Attention! The elf has become a bug! Should be dead already!"
+
+      type == "human" and age > max_human_age ->
+        "Expected human to have up to #{max_human_age}, got: #{age}"
+    end
+
+    field(:strength, :integer, derive: strength(type, age), gt: 0, lt: 100)
+  end
+end
+```
+
+```elixir
+max_elf_age = 400
+max_human_age = 120
+Character.new!(%{type: "Orc", age: 10}, binding())
+# Character.changeset(%Character{}, %{type: "Elf", age: 10}, binding())
+```
+
+```elixir
+defmodule TestB do
+  use Flint
+
+  embedded_schema do
+    field!(:description, Union, types: [:string, :binary])
+  end
+end
+```
+
+```elixir
+TestB.new!(%{description: <<0, 255>>})
+```
+
+```elixir
+type?.(:atom)
+```
 
 If you already have `Ecto` `embedded_schema`s that you want to convert to `Flint`, it's as easy as changing `use Ecto.Schema` to `use Flint`.
 
@@ -27,23 +125,10 @@ defmodule Author_a do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Author_a, <<70, 79, 82, 49, 0, 0, 14, ...>>, :ok}
-```
-
 ```elixir
 Author_a.__schema__(:primary_key) |> IO.inspect()
 Author_a.__schema__(:prefix) |> IO.inspect()
 Author_a.__schema__(:required)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[:id]
-"Ecto"
 ```
 
 Just declare the same schema using `Flint` and notice the differences
@@ -61,29 +146,10 @@ defmodule Author_b do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Author_b, <<70, 79, 82, 49, 0, 0, 20, ...>>, :ok}
-```
-
 ```elixir
 Author_b.__schema__(:primary_key) |> IO.inspect()
 Author_b.__schema__(:prefix) |> IO.inspect()
 Author_b.__schema__(:required)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[]
-"Flint"
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[]
 ```
 
 Now there's by default no `primary_key` set for `embedded_schema` and now the `__schema__` reflection function accepts a new key -- `:required`
@@ -102,20 +168,8 @@ defmodule Author_c do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Author_c, <<70, 79, 82, 49, 0, 0, 20, ...>>, :ok}
-```
-
 ```elixir
 Author_c.__schema__(:required)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[:last_name, :first_name]
 ```
 
 `Flint` provides `!` versions of `field`, `embeds_one`, and `embeds_many`, which will both mark the field as `:required` in the `__schema__` reflection function, and will also include a `validate_required` call in the default `changeset` implementation that `Flint` provides.
@@ -132,32 +186,16 @@ Author_c.__schema__(:required)
 Author_c.changeset(%Author_c{}, %{})
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-#Ecto.Changeset<
-  action: nil,
-  changes: %{},
-  errors: [
-    last_name: {"can't be blank", [validation: :required]},
-    first_name: {"can't be blank", [validation: :required]}
-  ],
-  data: #Author_c<>,
-  valid?: false,
-  ...
->
-```
-
 As you can see, the generated `changeset` function automatically accounts for the required fields, and now you can use `changeset` as you would any other changeset.
 
 You can also use the generated `new` and `new!` functions. `new` will create a new struct from the passed params and will apply the changes regardless of validation, as opposed to `new!`, which will `raise` on validation errors, but otherwise will apply any valid changes.
 
 Let's take a look at a more practical example. In this example, we're:
 
-- Using both normal and `!` variants of field declarations
-- Using the shorthand notation where we pass the schema as an option to the `use Flint` call
-- Using both external and inline `embeds` fields.
-- Using an `Ecto.Enum` field type to map values between `embedded` and `dumped` representations.
+* Using both normal and `!` variants of field declarations
+* Using the shorthand notation where we pass the schema as an option to the `use Flint` call
+* Using both external and inline `embeds` fields.
+* Using an `Ecto.Enum` field type to map values between `embedded` and `dumped` representations.
 
 ```elixir
 defmodule Book do
@@ -175,12 +213,6 @@ defmodule Book do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Book, <<70, 79, 82, 49, 0, 0, 23, ...>>, :ok}
-```
-
 Now when we call `Book.new` it will create a new `Book` struct regardless of validation errors.
 
 **Note that by `embeds_many(!)` fields will default to an empty list (`[]`) at all times, whereas `embeds_one!` defaults to `nil` as it marks the field as `:required`, whereas `embeds_one` defaults to the empty struct (of its embedding). You can control this behavior for `embeds_one` using the `defaults_to_struct` boolean option.**
@@ -189,20 +221,8 @@ Now when we call `Book.new` it will create a new `Book` struct regardless of val
 Book.new()
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-%Book{title: nil, author: nil, coauthors: [], genre: nil}
-```
-
 ```elixir
 Book.__schema__(:required)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[:author, :title]
 ```
 
 ```elixir
@@ -228,17 +248,6 @@ book =
   })
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-%Book{
-  title: "Harry Potter",
-  author: %Book.Author_d{first_name: "J.K.", last_name: "Rowling", bio: nil},
-  coauthors: [],
-  genre: :fantasy
-}
-```
-
 ```elixir
 defmodule Book_b do
   use Flint,
@@ -253,12 +262,6 @@ defmodule Book_b do
       field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
     ]
 end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Book_b, <<70, 79, 82, 49, 0, 0, 23, ...>>, :ok}
 ```
 
 Note the quirk that if the embedded field is not marked as required, but one of its subfields is, then if the embedded struct is partially intialized it will fail if the required subfield is missing
@@ -280,17 +283,6 @@ Book_b.new!(%{
 })
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-%Book_b{
-  title: "Harry Potter",
-  author: %Book_b.Author_c{first_name: nil, last_name: nil, bio: nil},
-  coauthors: [],
-  genre: :fantasy
-}
-```
-
 ### `Jason.Encoder`, `Access`, and `dump`
 
 <!-- livebook:{"break_markdown":true} -->
@@ -303,42 +295,14 @@ If you have `Jason` as a dependency, `Flint` will also implement the `Jason.Enco
 book |> Flint.Schema.dump()
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-%{
-  title: "Harry Potter",
-  author: %{first_name: "J.K.", last_name: "Rowling", bio: nil},
-  coauthors: [],
-  genre: 2
-}
-```
-
 Notice how, when dumped, the `:genre` field is represented as the value from its `Ecto.Enum` keyword map.
 
 ```elixir
 encoded_book = Jason.encode!(book)
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-"{\"title\":\"Harry Potter\",\"author\":{\"first_name\":\"J.K.\",\"last_name\":\"Rowling\",\"bio\":null},\"coauthors\":[],\"genre\":2}"
-```
-
 ```elixir
 decoded_book = Jason.decode!(encoded_book)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-%{
-  "author" => %{"bio" => nil, "first_name" => "J.K.", "last_name" => "Rowling"},
-  "coauthors" => [],
-  "genre" => 2,
-  "title" => "Harry Potter"
-}
 ```
 
 Now when we encode and decode, we get back to the dumped representation.
@@ -347,15 +311,4 @@ If we want to convert back to the embedded representation, we just call `new` or
 
 ```elixir
 Book.new!(decoded_book)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-%Book{
-  title: "Harry Potter",
-  author: %Book.Author_d{first_name: "J.K.", last_name: "Rowling", bio: nil},
-  coauthors: [],
-  genre: :fantasy
-}
 ```

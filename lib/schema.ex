@@ -1,4 +1,10 @@
 defmodule Flint.Schema do
+  @moduledoc """
+  `Flint.Schema` provides custom implementations of certain `Ecto` `embedded_schema` DSL keywords.
+
+  When you `use Flint`, all of these definitions are imported into the module and override the default
+  `Ecto.Schema` implementations. You should not have to directly interact with this module.
+  """
   require Logger
   import Ecto.Changeset
   @error_regex ~r"%{(\w+)}"
@@ -92,10 +98,21 @@ defmodule Flint.Schema do
     Module.put_attribute(module, :required, name)
   end
 
+  @doc """
+  Dumps the JSON representation of the given schema
+  """
   def dump(obj) do
     obj |> Ecto.embedded_dump(:json)
   end
 
+  @doc """
+  Wraps `Ecto`'s `field` macro to accept additional options which are consumed by `Flint.Pipeline`.
+
+  `Flint` options that are passed to `field` are stripped by `Flint` before passing them to `Ecto.Schema.field` and
+  stored in module attributed for the schema's module.
+
+  If no `Flint`-specific options or features are used, this acts the same as `Ecto.Schema.field`.
+  """
   defmacro field(name, type \\ :string, opts \\ [])
 
   defmacro field(name, type, do: block) when is_list(block) do
@@ -178,6 +195,12 @@ defmodule Flint.Schema do
     end
   end
 
+  @doc """
+  Marks a field as required by storing metadata in a module attribute, then calls `Flint.Schema.field`.
+
+  The metadata tracking is not enforced at the schema / struct level (eg. through enforced keys), but rather
+  at the schema validation level (through something such as `Flint.Pipeline.changeset`).
+  """
   defmacro field!(name, type \\ :string, opts \\ [])
 
   defmacro field!(name, type, do: block) do
@@ -208,6 +231,22 @@ defmodule Flint.Schema do
     end
   end
 
+  @doc """
+  Wraps `Ecto`'s `embeds_one` macro to accept additional options which are consumed by `Flint.Pipeline`.
+
+  `Flint` options that are passed to `embeds_one` are stripped by `Flint` before passing them to `Ecto.Schema.embeds_one` and
+  stored in module attributed for the schema's module.
+
+  The following default options are passed to `Flint.Schema.embeds_one` and can be overriden at the `Application` level or at the
+  local call level.
+
+  ## Default Options
+
+  ```elixir
+  defaults_to_struct: true,
+  on_replace: :delete
+  ```
+  """
   defmacro embeds_one(name, schema, opts \\ [])
 
   defmacro embeds_one(name, schema, do: block) do
@@ -244,6 +283,21 @@ defmodule Flint.Schema do
     end
   end
 
+  @doc """
+  Marks an embeds_one field as required by storing metadata in a module attribute, then calls `Flint.Schema.embeds_one`.
+
+  The metadata tracking is not enforced at the schema / struct level (eg. through enforced keys), but rather
+  at the schema validation level (through something such as `Flint.Pipeline.changeset`).
+
+  The following default options are passed to `Flint.Schema.embeds_one!` and can be overriden at the `Application` level or at the
+  local call level.
+
+  ## Default Options
+
+  ```elixir
+  on_replace: :delete
+  ```
+  """
   defmacro embeds_one!(name, schema, opts \\ [])
 
   defmacro embeds_one!(name, schema, do: block) do
@@ -290,6 +344,21 @@ defmodule Flint.Schema do
     end
   end
 
+  @doc """
+  Wraps `Ecto`'s `embeds_many` macro to accept additional options which are consumed by `Flint.Pipeline`.
+
+  `Flint` options that are passed to `embeds_many` are stripped by `Flint` before passing them to `Ecto.Schema.embeds_many` and
+  stored in module attributed for the schema's module.
+
+  The following default options are passed to `Flint.Schema.embeds_many` and can be overriden at the `Application` level or at the
+  local call level.
+
+  ## Default Options
+
+  ```elixir
+  on_replace: :delete
+  ```
+  """
   defmacro embeds_many(name, schema, opts \\ [])
 
   defmacro embeds_many(name, schema, do: block) do
@@ -326,6 +395,21 @@ defmodule Flint.Schema do
     end
   end
 
+  @doc """
+  Marks an embeds_many field as required by storing metadata in a module attribute, then calls `Flint.Schema.embeds_many`.
+
+  The metadata tracking is not enforced at the schema / struct level (eg. through enforced keys), but rather
+  at the schema validation level (through something such as `Flint.Pipeline.changeset`).
+
+  The following default options are passed to `Flint.Schema.embeds_many!` and can be overriden at the `Application` level or at the
+  local call level.
+
+  ## Default Options
+
+  ```elixir
+  on_replace: :delete
+  ```
+  """
   defmacro embeds_many!(name, schema, opts \\ [])
 
   defmacro embeds_many!(name, schema, do: block) do
@@ -389,6 +473,9 @@ defmodule Flint.Schema do
     {module, opts}
   end
 
+  @doc """
+  Wraps `Ecto`'s `embedded_schema` macro, injecting `Flint`'s custom macro implementation into the module space.
+  """
   defmacro embedded_schema(do: block) do
     quote do
       Ecto.Schema.embedded_schema do
@@ -421,11 +508,20 @@ defmodule Flint.Schema do
 
   defp expand_nested_module_alias(other, _env), do: other
 
+  @doc """
+  Creates a new schema struct according to the schema's `changeset` implementation, immediately applying
+  the changes from the changeset regardless of errors.
+
+  If you want to manually handle error cases, you should use the `changeset` function itself.
+  """
   def new(module, params \\ %{}, bindings \\ []) do
     apply(module, :changeset, [struct!(module), params, bindings])
     |> apply_changes()
   end
 
+  @doc """
+  Same as `new`, except will `raise` if any errors exist in the changeset.
+  """
   def new!(module, params \\ %{}, bindings \\ []) do
     changeset = apply(module, :changeset, [struct!(module), params, bindings])
 

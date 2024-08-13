@@ -29,7 +29,7 @@ Practical [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for d
 ```elixir
 def deps do
   [
-    {:flint, github: "acalejos/flint"}
+    {:flint, "~> 0.1"}
   ]
 end
 ```
@@ -88,7 +88,7 @@ end
 ```
 
 If you're starting with `Flint` and you know you will stick with it, the shorthand might make more sense. But if you want to be able to quickly
-change between `use Ecto.Schem` and `use Flint`, or you're converting some existing `Ecto` `embedded_schema`s to `Flint`, the latter might be
+change between `use Ecto.Schema` and `use Flint`, or you're converting some existing `Ecto` `embedded_schema`s to `Flint`, the latter might be
 preferable.
 
 Since a call to `Flint`'s `embedded_schema` or `use Flint, schema: []`  just creates an `Ecto` `embedded_schema` you can use them just as you would any other `Ecto` schemas. You can compose them, apply changesets to them, etc.
@@ -109,19 +109,19 @@ Union type for Ecto. Allows the field to be any of the specified types.
 * `new` - Creates a new changeset from the empty module struct and applies the changes (regardless of whether the changeset was valid).
 * `new!` - Same as new, except raises if the changeset is not valid.
 
-### Changeset
+### Pipeline
 
 At their core, the new `field` and `field!` macros' only additional functionality over the default `Ecto` macros
-is to store the allowed `Flint` options into module attritbutes which are exposed as new reflection functions.
+is to store the allowed `Flint` options into module attributes which are exposed as new reflection functions.
 
 The bulk of the work done in Flint with validations and transformations of data occurs in the generated `changeset`
 function, which leaves it up to the end user whether to use the default implementation, roll their own from scratch
-using the information exposed through the reflection functions, or do something in between (such as using the `Flint.Changeset` APIs).
+using the information exposed through the reflection functions, or do something in between (such as using the `Flint.Pipeline` APIs).
 
 When you `use Flint`, you declare an overridable `changeset` function for your schema module that by default just
-delegates to the `Flint.Changeset.changeset/3` function.
+delegates to the `Flint.Pipeline.changeset/3` function.
 
-The `Flint.Changeset.changeset/3` function operates as the following pipeline:
+The `Flint.Pipeline.changeset/3` function operates as the following pipeline:
 
 1. Cast all fields (including embeds)
 2. Validate required fields ([Required Fields](#required-fields))
@@ -134,9 +134,9 @@ or exposed through `Flint`:
 
 1. [`Ecto.Changeset.cast/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#cast/4) / [`Ecto.Changeset.cast_embed/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#cast_embed/3)
 2. [`Ecto.Changeset.validate_required/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_required/3)
-3. `Flint.Changeset.apply_pre_transforms/2`
-4. `Flint.Changeset.apply_validations/2`
-5. `Flint.Changeset.apply_post_transforms/2`
+3. `Flint.Pipeline.apply_pre_transforms/2`
+4. `Flint.Pipeline.apply_validations/2`
+5. `Flint.Pipeline.apply_post_transforms/2`
 
 ## Required Fields
 
@@ -455,7 +455,7 @@ You can also configure any aliases you want to use for schema validations.
 `Flint` takes advantage of the distinction `Ecto` makes between an `embedded_schema`'s embedded and dumped representations.
 
 For example, by default in `Flint`, `Ecto.Enum`s that are `Keyword` (rather than just lists of atoms) will have their keys
-be the embedded representation, and will have the values be the dumped representation.
+be the embedded representation and will have the values be the dumped representation.
 
 ```elixir
 defmodule Book do
@@ -471,7 +471,7 @@ Flint.Schema.dump(book)
 # %{genre: 0}
 ```
 
-In this example, you can how you can share multiple representations of the same data using this distinction.
+In this example, you can see how you can share multiple representations of the same data using this distinction.
 
 You can also implement your own `Ecto.Type` and further customize this:
 
@@ -515,7 +515,7 @@ Flint.Schema.dump(url)
 
 ## Examples
 
-You can view the [Notebooks folder](https://github.com/acalejos/flint/tree/main/notebooks) for some examples in LIivebook.
+You can view the [Notebooks folder](https://github.com/acalejos/flint/tree/main/notebooks) for some examples in Livebook.
 
 You can also look at [Merquery](https://github.com/acalejos/merquery/tree/main/lib/merquery/schemas) for a real, comprehensive
 example of how to use `Flint`.

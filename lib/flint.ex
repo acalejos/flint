@@ -40,7 +40,7 @@ defmodule Flint do
         def __schema__(:pre_transforms), do: @pre_transforms |> Enum.reverse()
         def __schema__(:post_transforms), do: @post_transforms |> Enum.reverse()
 
-        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Changeset
+        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Pipeline
         def new(params \\ %{}, bindings \\ []), do: Flint.Schema.new(__MODULE__, params, bindings)
 
         def new!(params \\ %{}, bindings \\ []),
