@@ -23,6 +23,7 @@ defmodule Flint do
     prelude =
       quote do
         alias Flint.Types.Union
+        import Flint.Partial
 
         @after_compile Flint.Schema
 

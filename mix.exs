@@ -5,12 +5,12 @@ defmodule Flint.MixProject do
     [
       app: :flint,
       name: "Flint",
-      version: "0.1.0",
+      version: "0.2.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description:
-        "Practical Ecto embedded schemas for data validation, coercion, and manipulation.",
+        "Declarative Ecto embedded schemas for data validation, coercion, and manipulation.",
       source_url: "https://github.com/acalejos/flint",
       homepage_url: "https://github.com/acalejos/flint",
       package: package(),

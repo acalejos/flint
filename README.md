@@ -6,7 +6,7 @@
 [![Twitter Follow](https://img.shields.io/twitter/follow/ac_alejos?style=social)](https://twitter.com/ac_alejos)
 <!-- BEGIN MODULEDOC -->
 
-Practical [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for data validation, coercion, and manipulation.
+Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for data validation, coercion, and manipulation.
 
 ## Feature Overview
 
