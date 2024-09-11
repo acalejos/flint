@@ -23,6 +23,7 @@ Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for
   * `__schema__(:post_transforms` - `Keyword` mapping of fields to post-transformations (currently only `:map` option)
 * Convenient generated function (`changeset`,`new`,`new!`,...) ([Generated Functions](#generated-functions))
 * Configurable `Application`-wide defaults for `Ecto.Schema` API ([Config](#config))
+* Conveniently create new `Ecto` types using the `Flint.Type` module and its  `deftype/2` macro ([`Flint.Type`](#flinttype))
 
 ## Installation
 
@@ -100,6 +101,45 @@ Since a call to `Flint`'s `embedded_schema` or `use Flint, schema: []`  just cre
 ### `Union`
 
 Union type for Ecto. Allows the field to be any of the specified types.
+
+## `Flint.Type`
+
+  `Flint.Type` is meant to make writing new `Ecto` types require much less boilerplate, because you can base your
+  type off of an existing type and only modify the callbacks that have different behavior.
+
+  Simply `use Flint.Type` and pass the `:extends` option which says which type module to inherit callbacks
+  from.  This will delegate all required callbacks and any implemented optional callbacks and make them
+  overridable.
+
+  It also lets you make a type from an `Ecto.ParameterizedType` with default parameter values.
+  You may supply any number of default parameters. This essentially provides a new
+  `init/1` implementation for the type, supplying the default values, while not affecting any of the
+  other `Ecto.ParameterizedType` callbacks. You may still override the newly set defaults at the local level.
+
+  Just supply all options that you wish to be defaults as extra options when using `Flint.Type`.
+
+  You may override any of the inherited callbacks inherity from the extended module
+  in the case that you wish to customize the module further.
+
+### Examples
+
+  ``` elixir
+  defmodule Category do
+    use Flint.Type, extends: Ecto.Enum, values: [:folder, :file]
+  end
+  ```
+
+  This will apply default `values` to `Ecto.Enum` when you supply a `Category` type
+  to an Ecto schema. You may still override the values if you supply the `:values`
+  option for the field.
+
+  ```elixir
+  import Flint.Type
+  deftype NewUID, extends: Ecto.UUID, dump: &String.length/1
+  ```
+
+  This will create a new `NewUID` type that behaves exactly like an `Ecto.UUID` except it dumps
+  its string length.
 
 ## Generated Functions
 
@@ -473,7 +513,7 @@ Flint.Schema.dump(book)
 
 In this example, you can see how you can share multiple representations of the same data using this distinction.
 
-You can also implement your own `Ecto.Type` and further customize this:
+You can also implement your own `Ecto.Type` and further customize this (see [`Flint.Type`](#flinttype)):
 
 ```elixir
 defmodule ContentType do

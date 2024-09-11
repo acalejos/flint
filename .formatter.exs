@@ -3,8 +3,8 @@
   inputs: ["{mix,.formatter}.exs", "{config,lib,test}/**/*.{ex,exs}"],
   import_deps: [:ecto],
   locals_without_parens: [
-    # Partial
-    defpartial: 2,
+    # Type
+    deftype: 2,
     # Schema
     field!: 1,
     field!: 2,
