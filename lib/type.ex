@@ -137,12 +137,17 @@ defmodule Flint.Type do
 
     using = quote(do: use(unquote(module_for_type(type))))
 
+    reflection =
+      quote do
+        def base_type, do: unquote(extends)
+      end
+
     init =
       if type == Ecto.ParameterizedType do
         quote do
           def init(opts) do
             opts = opts ++ unquote(opts)
-            unquote(extends).init(opts)
+            unquote(extends).init(opts) |> Map.put_new(:extends, unquote(extends))
           end
         end
       end
@@ -150,6 +155,7 @@ defmodule Flint.Type do
     quoted =
       ([
          using,
+         reflection,
          init
        ] ++
          callbacks)
