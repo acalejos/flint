@@ -458,6 +458,47 @@ Character.new!(%{type: "Elf", age: 10}, binding())
 %Character{type: "ELF", age: 10}
 ```
 
+## Extensions
+
+Flint provides an extensible architecture using the `Flint.Extension` module. Default extensions include:
+
+* `Accessible` - Adds `Access` implementation to the target schemas
+* `JSON` - Adds a custom JSON encoding (`Jason` and `Poison` supported) implementation to the target schemas
+* `Embedded` - Sets good default module attribute values used by `Ecto` specifically tailored for in-memory embedded schemas
+
+To use extensions, you can specify them when using `Flint.Schema` in your module:
+
+```elixir
+defmodule MySchema do
+  use Flint.Schema,
+    extensions: [Accessible, JSON]
+
+  embedded_schema do
+    # Schema fields...
+  end
+end
+```
+
+**Note that you don't have to write the fully-qualified name for modules in the `Flint.Extensions` module.**
+
+You can use `Flint.default_extensions()` to refer to the default extensions, which you will have to
+explicitly add if you pass custom values to the `:extensions` option when using `Flint.Schema`, eg.
+
+```elixir
+defmodule MySchema do
+  use Flint.Schema,
+    extensions: Flint.default_extensions() ++ [MyExtension]
+
+  embedded_schema do
+    # Schema fields...
+  end
+end
+```
+
+You can also create custom extensions by implementing the `Flint.Extension` behaviour. This allows you to add additional functionality or modify the behavior of Flint schemas according to your specific needs.
+
+For more details on creating and using extensions, refer to the `Flint.Extension` module documentation.
+
 ## Aliases
 
 If you don't like the name of an option, you can provide a compile-time list of aliases to map new option names to existing options
