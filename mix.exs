@@ -5,7 +5,7 @@ defmodule Flint.MixProject do
     [
       app: :flint,
       name: "Flint",
-      version: "0.3.1",
+      version: "0.4.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -31,7 +31,9 @@ defmodule Flint.MixProject do
   defp deps do
     [
       {:ecto, "~> 3.12"},
+      {:spark, "~> 2.2"},
       {:jason, "~> 1.4", optional: true},
+      {:poison, "~> 6.0", optional: true},
       {:ex_doc, "~> 0.31.0", only: :docs}
     ]
   end
@@ -49,6 +51,15 @@ defmodule Flint.MixProject do
       main: "Flint",
       groups_for_extras: [
         Notebooks: Path.wildcard("notebooks/*.livemd")
+      ],
+      groups_for_modules: [
+        Types: [Flint.Type, Flint.Types.Union],
+        Extensions: [
+          Flint.Extension,
+          Flint.Extensions.Accessible,
+          Flint.Extensions.Embedded,
+          Flint.Extensions.JSON
+        ]
       ]
     ]
   end

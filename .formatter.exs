@@ -14,6 +14,12 @@
     embeds_one!: 4,
     embeds_many!: 2,
     embeds_many!: 3,
-    embeds_many!: 4
-  ]
+    embeds_many!: 4,
+    # Extensions (Spark)
+    attribute: 1,
+    attribute: 2,
+    option: 1,
+    option: 2
+  ],
+  plugins: [Spark.Formatter]
 ]

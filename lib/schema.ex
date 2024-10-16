@@ -7,6 +7,7 @@ defmodule Flint.Schema do
   """
   require Logger
   import Ecto.Changeset
+
   @error_regex ~r"%{(\w+)}"
 
   @required_with_default_warning """
@@ -106,7 +107,14 @@ defmodule Flint.Schema do
           opts
       end
 
-    {field_opts, opts} = Keyword.split(opts, @field_opts)
+    extension_opts =
+      Module.get_attribute(__CALLER__.module, :extension_options, [])
+
+    extension_opts_names = Enum.map(extension_opts, & &1.name)
+
+    {field_opts, opts} =
+      Keyword.split(opts, @field_opts ++ extension_opts_names)
+
     {alias_opts, opts} = Keyword.split(opts, Keyword.keys(@aliases))
 
     field_opts =
@@ -124,12 +132,52 @@ defmodule Flint.Schema do
 
     {validator_opts, field_opts} = Keyword.split(field_opts, @validation_opts)
     {pre_transform_opts, field_opts} = Keyword.split(field_opts, @pre_transform_opts)
-    {post_transform_opts, _field_opts} = Keyword.split(field_opts, @post_transform_opts)
+    {post_transform_opts, field_opts} = Keyword.split(field_opts, @post_transform_opts)
+
+    {extra_options, _field_opts} =
+      Keyword.split(field_opts, extension_opts_names)
+
+    extra_options =
+      Enum.map(extension_opts, fn %Flint.Extension.Field{
+                                    name: option_name,
+                                    default: default,
+                                    validator: validator,
+                                    required: required
+                                  } ->
+        value =
+          cond do
+            Keyword.has_key?(extra_options, option_name) ->
+              Keyword.fetch!(extra_options, option_name)
+
+            !is_nil(default) ->
+              default
+
+            true ->
+              nil
+          end
+
+        if required && is_nil(value),
+          do:
+            raise(
+              ArgumentError,
+              "Required option #{inspect(option_name)} on field #{inspect(name)} not found."
+            )
+
+        if required && validator && not validator.(value),
+          do:
+            raise(
+              ArgumentError,
+              "Value #{inspect(value)} for option #{inspect(option_name)} on field #{inspect(name)} failed validation."
+            )
+
+        {option_name, value}
+      end)
 
     for {k, v} <- [
           pre_transforms: pre_transform_opts,
           validations: validator_opts,
-          post_transforms: post_transform_opts
+          post_transforms: post_transform_opts,
+          extra_options: extra_options
         ],
         length(v) != 0 do
       Module.put_attribute(
@@ -461,6 +509,7 @@ defmodule Flint.Schema do
           ]
 
         import Flint.Schema
+        @after_compile Flint.Schema
 
         unquote(block)
       end
@@ -510,40 +559,99 @@ defmodule Flint.Schema do
   defmacro __using__(opts) do
     {schema, opts} = Keyword.pop(opts, :schema)
 
-    opts =
-      Keyword.validate!(
-        opts,
-        primary_key: false,
-        schema_prefix: nil,
-        schema_context: nil,
-        timestamp_opts: [type: :naive_datetime]
+    {extensions, _opts} =
+      Keyword.pop(opts, :extensions, Flint.default_extensions())
+
+    extensions =
+      extensions
+      |> Enum.map(
+        &Macro.expand_literals(
+          &1,
+          Map.update(__ENV__, :aliases, [], fn aliases ->
+            aliases ++
+              [
+                {Accessible, Flint.Extensions.Accessible},
+                {Embedded, Flint.Extensions.Embedded},
+                {JSON, Flint.Extensions.JSON}
+              ]
+          end)
+        )
       )
+      |> IO.inspect()
+
+    attributes =
+      extensions
+      |> Enum.flat_map(fn extension ->
+        extension =
+          case extension do
+            {ext, _opts} when is_atom(ext) ->
+              ext
+
+            ext when is_atom(ext) ->
+              ext
+          end
+
+        for attr <- Flint.Extension.Config.attributes(extension) do
+          {extension, attr}
+        end
+      end)
+
+    options =
+      extensions
+      |> Enum.flat_map(fn extension ->
+        extension =
+          case extension do
+            {ext, _opts} when is_atom(ext) ->
+              ext
+
+            ext when is_atom(ext) ->
+              ext
+          end
+
+        for attr <- Flint.Extension.Config.options(extension) do
+          {extension, attr}
+        end
+      end)
 
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
     Module.register_attribute(__CALLER__.module, :validations, accumulate: true)
     Module.register_attribute(__CALLER__.module, :pre_transforms, accumulate: true)
     Module.register_attribute(__CALLER__.module, :post_transforms, accumulate: true)
+    # Extension-Related Attributes
+    Module.register_attribute(__CALLER__.module, :extension_attributes, accumulate: true)
+    Module.register_attribute(__CALLER__.module, :extension_options, accumulate: true)
+    Module.register_attribute(__CALLER__.module, :extra_options, accumulate: true)
+
+    attrs =
+      Enum.map(attributes, fn {_extension, field} = attr ->
+        Module.put_attribute(__CALLER__.module, :extension_attributes, attr)
+
+        if not is_nil(field.default) do
+          quote do
+            Module.put_attribute(__MODULE__, unquote(field.name), unquote(field.default))
+          end
+        end
+      end)
+      |> Enum.filter(& &1)
+
+    Enum.each(options, fn {_extension, field} ->
+      Module.put_attribute(__CALLER__.module, :extension_options, field)
+    end)
 
     prelude =
       quote do
         alias Flint.Types.Union
         import Flint.Type
 
-        @after_compile Flint.Schema
-
-        @behaviour Access
-
-        @impl true
-        defdelegate fetch(term, key), to: Map
-        @impl true
-        defdelegate get_and_update(term, key, fun), to: Map
-        @impl true
-        defdelegate pop(data, key), to: Map
+        @before_compile Flint.Schema
 
         def __schema__(:required), do: @required |> Enum.reverse()
         def __schema__(:validations), do: @validations |> Enum.reverse()
         def __schema__(:pre_transforms), do: @pre_transforms |> Enum.reverse()
         def __schema__(:post_transforms), do: @post_transforms |> Enum.reverse()
+        # Extension-Related Reflections
+        def __schema__(:extensions), do: unquote(extensions)
+        def __schema__(:extra_options), do: @extra_options |> Enum.reverse()
 
         defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Pipeline
         def new(params \\ %{}, bindings \\ []), do: Flint.Schema.new(__MODULE__, params, bindings)
@@ -561,27 +669,33 @@ defmodule Flint.Schema do
                        changeset: 2,
                        changeset: 3
 
-        if Code.ensure_loaded?(Jason) do
-          defimpl Jason.Encoder do
-            def encode(value, opts) do
-              value |> Ecto.embedded_dump(:json) |> Jason.Encode.map(opts)
-            end
-          end
-        end
-
         use Ecto.Schema
         import Ecto.Schema, except: [embedded_schema: 1]
         import Flint.Schema, only: [embedded_schema: 1]
-
-        @schema_prefix unquote(opts[:schema_prefix])
-        @schema_context unquote(opts[:schema_context])
-        @timestamp_opts unquote(opts[:timestamp_opts])
-        @primary_key unquote(opts[:primary_key])
+        unquote_splicing(attrs)
       end
+
+    using_extensions =
+      extensions
+      |> Enum.map(fn
+        {extension, opts} when is_atom(extension) ->
+          quote do
+            use unquote(extension), unquote(opts)
+          end
+
+        extension when is_atom(extension) ->
+          quote do
+            use unquote(extension)
+          end
+
+        _ ->
+          raise ArgumentError, "Error with extension option."
+      end)
 
     if schema do
       quote do
         unquote(prelude)
+        unquote_splicing(using_extensions)
 
         embedded_schema do
           unquote(schema)
@@ -590,7 +704,39 @@ defmodule Flint.Schema do
     else
       quote do
         unquote(prelude)
+        unquote_splicing(using_extensions)
       end
+    end
+  end
+
+  defmacro __before_compile__(_env) do
+    attrs =
+      Module.get_attribute(__CALLER__.module, :extension_attributes, [])
+
+    attrs_reflections =
+      Enum.map(attrs, fn {extension, %Flint.Extension.Field{name: name, validator: validator}} ->
+        attr_val = Module.get_attribute(__CALLER__.module, name)
+
+        if validator && not validator.(attr_val),
+          do:
+            raise(
+              ArgumentError,
+              "Value #{inspect(attr_val)} for attribute #{inspect(name)} registered for extension #{inspect(extension)} failed validation."
+            )
+
+        quote do
+          def __schema__(unquote(name)),
+            do: unquote(Macro.escape(attr_val))
+        end
+      end)
+
+    quote do
+      def __schema__(:attributes),
+        do: unquote(Macro.escape(Enum.group_by(attrs, &elem(&1, 0), &elem(&1, 1))))
+
+      unquote_splicing(attrs_reflections)
+
+      def __schema__(_), do: {:error, "Unknown schema reflection."}
     end
   end
 

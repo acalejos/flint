@@ -14,13 +14,16 @@ Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for
 * Colocated input transformations let you either transform input fields before validation or derive field values from other fields ([Derived Fields / Input Transformations](#derived-fields--input-transformations))
 * Colocated validations, so you can define common validations alongside field declarations ([Validations](#field-validations))
 * Colocated output transformations let you transform fields after validation ([Mappings / Output Transformations](#mappings--output-transformations))
-* Adds `Access` implementation to all schemas
-* Adds `Jason.Encoder` implementation to all schemas
+* Extensible using the `Flint.Extension` module. Default extensions include:
+  * `Accessible` - Adds `Access` implementation to the target schemas
+  * `JSON` - Adds a custom JSON encoding (`Jason` and `Poison` supported) implementation to the target schemas
+  * `Embedded` - Sets good default module attribute values used by `Ecto` specifically tailored for in-memory embedded schemas
 * New [`Ecto.Schema` Reflection Functions](https://hexdocs.pm/ecto/Ecto.Schema.html#module-reflection)
   * `__schema__(:required)` - Returns list of fields marked as required (from `!` macros)
   * `__schema__(:pre_transforms` - `Keyword` mapping of fields to pre-transformations (currently only `:derive` option)
   * `__schema__(:validations)` - `Keyword` mapping of fields to validations
   * `__schema__(:post_transforms` - `Keyword` mapping of fields to post-transformations (currently only `:map` option)
+  * And more!
 * Convenient generated function (`changeset`,`new`,`new!`,...) ([Generated Functions](#generated-functions))
 * Configurable `Application`-wide defaults for `Ecto.Schema` API ([Config](#config))
 * Conveniently create new `Ecto` types using the `Flint.Type` module and its  `deftype/2` macro ([`Flint.Type`](#flinttype))
@@ -30,7 +33,7 @@ Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for
 ```elixir
 def deps do
   [
-    {:flint, "~> 0.1"}
+    {:flint, "~> 0.4"}
   ]
 end
 ```
