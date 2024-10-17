@@ -130,6 +130,12 @@ defmodule Flint.Extension do
       end
 
       defoverridable __using__: 1
+
+      def option_names(),
+        do: Spark.Dsl.Extension.get_entities(__MODULE__, :options) |> Enum.map(& &1.name)
+
+      def attribute_names(),
+        do: Spark.Dsl.Extension.get_entities(__MODULE__, :attributes) |> Enum.map(& &1.name)
     end
   end
 end

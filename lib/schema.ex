@@ -28,31 +28,7 @@ defmodule Flint.Schema do
   @embeds_many_defaults Application.compile_env(:flint, [:embeds_many], on_replace: :delete)
   @embeds_many_bang_defaults Application.compile_env(:flint, [:embeds_many!], on_replace: :delete)
   @enum_defaults Application.compile_env(:flint, [:enum], embed_as: :dumped)
-  @validation_opts [
-    :greater_than,
-    :less_than,
-    :less_than_or_equal_to,
-    :greater_than_or_equal_to,
-    :equal_to,
-    :not_equal_to,
-    :format,
-    :subset_of,
-    :in,
-    :not_in,
-    :is,
-    :min,
-    :max,
-    :count,
-    :when,
-    :block
-  ]
-  @pre_transform_opts [
-    :derive
-  ]
-  @post_transform_opts [
-    :map
-  ]
-  @field_opts @validation_opts ++ @pre_transform_opts ++ @post_transform_opts
+
   @default_aliases [
     lt: :less_than,
     gt: :greater_than,
@@ -112,30 +88,26 @@ defmodule Flint.Schema do
 
     extension_opts_names = Enum.map(extension_opts, & &1.name)
 
-    {field_opts, opts} =
-      Keyword.split(opts, @field_opts ++ extension_opts_names)
+    {extra_opts, opts} =
+      Keyword.split(opts, extension_opts_names)
+
+    {block, opts} = Keyword.pop(opts, :block)
+    if block, do: Module.put_attribute(__CALLER__.module, :blocks, {name, block})
 
     {alias_opts, opts} = Keyword.split(opts, Keyword.keys(@aliases))
 
-    field_opts =
-      field_opts ++
+    extra_opts =
+      extra_opts ++
         Enum.map(alias_opts, fn {als, opt} ->
           mapped = Keyword.get(@aliases, als)
 
-          unless mapped in @field_opts do
+          unless mapped in extension_opts_names do
             raise ArgumentError,
-                  "Alias #{inspect(als)} in field #{inspect(name)} mapped to invalid option #{inspect(mapped)}. Must be mapped to a value in #{inspect(@field_opts)}"
+                  "Alias #{inspect(als)} in field #{inspect(name)} mapped to invalid option #{inspect(mapped)}. Must be mapped to a value in #{inspect(extension_opts_names)}"
           end
 
           {mapped, opt}
         end)
-
-    {validator_opts, field_opts} = Keyword.split(field_opts, @validation_opts)
-    {pre_transform_opts, field_opts} = Keyword.split(field_opts, @pre_transform_opts)
-    {post_transform_opts, field_opts} = Keyword.split(field_opts, @post_transform_opts)
-
-    {extra_options, _field_opts} =
-      Keyword.split(field_opts, extension_opts_names)
 
     extra_options =
       Enum.map(extension_opts, fn %Flint.Extension.Field{
@@ -146,8 +118,8 @@ defmodule Flint.Schema do
                                   } ->
         value =
           cond do
-            Keyword.has_key?(extra_options, option_name) ->
-              Keyword.fetch!(extra_options, option_name)
+            Keyword.has_key?(extra_opts, option_name) ->
+              Keyword.fetch!(extra_opts, option_name)
 
             !is_nil(default) ->
               default
@@ -173,18 +145,8 @@ defmodule Flint.Schema do
         {option_name, value}
       end)
 
-    for {k, v} <- [
-          pre_transforms: pre_transform_opts,
-          validations: validator_opts,
-          post_transforms: post_transform_opts,
-          extra_options: extra_options
-        ],
-        length(v) != 0 do
-      Module.put_attribute(
-        __CALLER__.module,
-        k,
-        {name, v}
-      )
+    if length(extra_options) != 0 do
+      Module.put_attribute(__CALLER__.module, :extra_options, {name, extra_options})
     end
 
     quote do
@@ -570,14 +532,17 @@ defmodule Flint.Schema do
           Map.update(__ENV__, :aliases, [], fn aliases ->
             aliases ++
               [
+                {When, Flint.Extensions.When},
                 {Accessible, Flint.Extensions.Accessible},
+                {EctoValidations, Flint.Extensions.EctoValidations},
                 {Embedded, Flint.Extensions.Embedded},
-                {JSON, Flint.Extensions.JSON}
+                {JSON, Flint.Extensions.JSON},
+                {PreTransforms, Flint.Extensions.PreTransforms},
+                {PostTransforms, Flint.Extensions.PostTransforms}
               ]
           end)
         )
       )
-      |> IO.inspect()
 
     attributes =
       extensions
@@ -591,7 +556,7 @@ defmodule Flint.Schema do
               ext
           end
 
-        for attr <- Flint.Extension.Config.attributes(extension) do
+        for attr <- Spark.Dsl.Extension.get_entities(extension, :attributes) do
           {extension, attr}
         end
       end)
@@ -608,15 +573,14 @@ defmodule Flint.Schema do
               ext
           end
 
-        for attr <- Flint.Extension.Config.options(extension) do
+        for attr <- Spark.Dsl.Extension.get_entities(extension, :options) do
           {extension, attr}
         end
       end)
 
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
-    Module.register_attribute(__CALLER__.module, :validations, accumulate: true)
+    Module.register_attribute(__CALLER__.module, :blocks, accumulate: true)
     Module.register_attribute(__CALLER__.module, :pre_transforms, accumulate: true)
-    Module.register_attribute(__CALLER__.module, :post_transforms, accumulate: true)
     # Extension-Related Attributes
     Module.register_attribute(__CALLER__.module, :extension_attributes, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extension_options, accumulate: true)
@@ -646,9 +610,7 @@ defmodule Flint.Schema do
         @before_compile Flint.Schema
 
         def __schema__(:required), do: @required |> Enum.reverse()
-        def __schema__(:validations), do: @validations |> Enum.reverse()
-        def __schema__(:pre_transforms), do: @pre_transforms |> Enum.reverse()
-        def __schema__(:post_transforms), do: @post_transforms |> Enum.reverse()
+        def __schema__(:blocks), do: @blocks |> Enum.reverse()
         # Extension-Related Reflections
         def __schema__(:extensions), do: unquote(extensions)
         def __schema__(:extra_options), do: @extra_options |> Enum.reverse()

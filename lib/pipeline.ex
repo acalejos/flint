@@ -7,177 +7,17 @@ defmodule Flint.Pipeline do
   """
   import Ecto.Changeset
 
-  @doc """
-  Applies transformations to each field according to the `:derive` options passed in the schema specification.
-
-  These transformations are applied after casting, but before validations when used within the default `Flint.Pipeline.changeset` implementation.
-
-  Accepts optional bindings which are passed to evaluated code.
-  """
-  def apply_pre_transforms(changeset, bindings \\ []) do
-    module = changeset.data.__struct__
-    env = Module.concat(module, Env) |> apply(:env, [])
-    all_pre_transforms = module.__schema__(:pre_transforms)
-
-    for {field, pre_transforms} <- all_pre_transforms, reduce: changeset do
-      changeset ->
-        {derived_expression, _pre_transforms} = Keyword.pop(pre_transforms, :derive)
-        bindings = bindings ++ Enum.into(changeset.changes, [])
-
-        if derived_expression do
-          {derived_value, _bindings} = Code.eval_quoted(derived_expression, bindings, env)
-
-          derived_value =
-            if is_function(derived_value) do
-              case Function.info(derived_value, :arity) do
-                {:arity, 0} ->
-                  apply(derived_value, [])
-
-                {:arity, 1} when not is_nil(field) ->
-                  apply(derived_value, [
-                    fetch_change!(changeset, field)
-                  ])
-
-                _ ->
-                  raise ArgumentError,
-                        "Anonymous functions provided to `:derive` must be either 0-arity or an input value for the field must be provided."
-              end
-            else
-              derived_value
-            end
-
-          put_change(changeset, field, derived_value)
-        else
-          changeset
-        end
-    end
-  end
-
-  @doc """
-  Applies transformations to each field according to the `:map` options passed in the schema specification.
-
-  These transformations are applied after validations when used within the default `Flint.Pipeline.changeset` implementation.
-
-  Accepts optional bindings which are passed to evaluated code.
-  """
-  def apply_post_transforms(changeset, bindings \\ []) do
-    module = changeset.data.__struct__
-    env = Module.concat(module, Env) |> apply(:env, [])
-    all_post_transforms = module.__schema__(:post_transforms)
-
-    for {field, post_transforms} <- all_post_transforms, reduce: changeset do
-      changeset ->
-        {map_expression, _post_transforms} = Keyword.pop(post_transforms, :map)
-        bindings = bindings ++ Enum.into(changeset.changes, [])
-
-        if is_nil(map_expression) do
-          changeset
-        else
-          {mapped, _bindings} = Code.eval_quoted(map_expression, bindings, env)
-
-          mapped =
-            if is_function(mapped) do
-              case Function.info(mapped, :arity) do
-                {:arity, 1} when not is_nil(field) ->
-                  apply(mapped, [fetch_change!(changeset, field)])
-
-                {:arity, 1} when is_nil(field) ->
-                  nil
-
-                _ ->
-                  raise ArgumentError,
-                        ":map option only accepts arity-1 anonymous function"
-              end
-            else
-              mapped
-            end
-
-          put_change(changeset, field, mapped)
-        end
-    end
-  end
-
-  @doc """
-  Applies validations to each field according to the options passed in the schema specification.
-
-  See the `Field Validations` section of the README for more information on validation details.
-  """
-  def apply_validations(changeset, bindings \\ []) do
+  def validate_do_blocks(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
 
-    all_validations = module.__schema__(:validations)
+    all_validations =
+      module.__schema__(:blocks)
 
     for {field, validations} <- all_validations, reduce: changeset do
       changeset ->
-        {block, validations} = Keyword.pop(validations, :block, [])
-        {when_condition, validations} = Keyword.pop(validations, :when)
         bindings = bindings ++ Enum.into(changeset.changes, [])
-
-        validations =
-          validations
-          |> Enum.map(fn
-            {k, v} ->
-              {result, _bindings} = Code.eval_quoted(v, bindings, env)
-              {k, result}
-          end)
-
-        {validate_length_args, validations} =
-          Keyword.split(validations, [:is, :min, :max, :count])
-
-        {validate_number_args, validations} =
-          Keyword.split(validations, [
-            :less_than,
-            :greater_than,
-            :less_than_or_equal_to,
-            :greater_than_or_equal_to,
-            :equal_to,
-            :not_equal_to
-          ])
-
-        {validate_subset_arg, validations} = Keyword.pop(validations, :subset_of)
-        {validate_inclusion_arg, validations} = Keyword.pop(validations, :in)
-        {validate_exclusion_arg, validations} = Keyword.pop(validations, :not_in)
-        {validate_format_arg, _validations} = Keyword.pop(validations, :format)
-
-        validation_args = [
-          validate_inclusion: validate_inclusion_arg,
-          validate_exclusion: validate_exclusion_arg,
-          validate_number: validate_number_args,
-          validate_length: validate_length_args,
-          validate_format: validate_format_arg,
-          validate_subset: validate_subset_arg
-        ]
-
-        changeset =
-          Enum.reduce(validation_args, changeset, fn
-            {_func, nil}, chngset ->
-              chngset
-
-            {_func, []}, chngset ->
-              chngset
-
-            {func, arg}, chngset ->
-              apply(Ecto.Changeset, func, [chngset, field, arg])
-          end)
-
-        {validate_when_condition, _bindings} =
-          try do
-            Code.eval_quoted(
-              when_condition,
-              bindings,
-              env
-            )
-          rescue
-            _ ->
-              {false, nil}
-          end
-
-        if validate_when_condition do
-          changeset
-        else
-          add_error(changeset, field, "Failed `:when` validation")
-        end
+        block = Keyword.get(validations, :block, [])
 
         block
         |> Enum.with_index()
@@ -272,8 +112,6 @@ defmodule Flint.Pipeline do
 
     changeset
     |> validate_required(required_fields)
-    |> apply_pre_transforms(bindings)
-    |> apply_validations(bindings)
-    |> apply_post_transforms(bindings)
+    |> validate_do_blocks(bindings)
   end
 end

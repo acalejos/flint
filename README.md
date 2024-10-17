@@ -460,13 +460,28 @@ Character.new!(%{type: "Elf", age: 10}, binding())
 
 ## Extensions
 
-Flint provides an extensible architecture using the `Flint.Extension` module. Default extensions include:
+Flint provides an extensible architecture using the `Flint.Extension` module.
 
-* `Accessible` - Adds `Access` implementation to the target schemas
-* `JSON` - Adds a custom JSON encoding (`Jason` and `Poison` supported) implementation to the target schemas
-* `Embedded` - Sets good default module attribute values used by `Ecto` specifically tailored for in-memory embedded schemas
+In fact, most of the core features that `Flint` offers are written as `Flint` extensions.
 
-To use extensions, you can specify them when using `Flint.Schema` in your module:
+The default extensions can be retrieved using `Flint.default_extensions()`
+
+```elixir
+Flint.default_extensions()
+
+[
+  Flint.Extensions.PreTransforms,
+  Flint.Extensions.When,
+  Flint.Extensions.EctoValidations,
+  Flint.Extensions.PostTransforms,
+  Flint.Extensions.Accessible,
+  Flint.Extensions.Embedded,
+  Flint.Extensions.JSON
+]
+```
+
+To use extensions, you can specify them when using `Flint.Schema` in your module. If the `:extensions` option
+is not provided, the default extensions will be used.
 
 ```elixir
 defmodule MySchema do
