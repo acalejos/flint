@@ -108,9 +108,13 @@ defmodule Flint.Extension do
 
   By default, `Flint` will enable the following extensions:
 
-  * `JSON`
-  * `Accessible`
-  * `Embedded`
+  *  `Flint.Extensions.PreTransforms`,
+  *  `Flint.Extensions.When`,
+  *  `Flint.Extensions.EctoValidations`,
+  *  `Flint.Extensions.PostTransforms`,
+  *  `Flint.Extensions.Accessible`,
+  *  `Flint.Extensions.Embedded`,
+  *  `Flint.Extensions.JSON`
 
   If you want to pass your own list of extensions for a module, you will need to explicitly pass the defaults
   as well if you would like to keep them. You can use the convenience `Flint.default_extensions/0` constant
@@ -131,9 +135,11 @@ defmodule Flint.Extension do
 
       defoverridable __using__: 1
 
+      @doc false
       def option_names(),
         do: Spark.Dsl.Extension.get_entities(__MODULE__, :options) |> Enum.map(& &1.name)
 
+      @doc false
       def attribute_names(),
         do: Spark.Dsl.Extension.get_entities(__MODULE__, :attributes) |> Enum.map(& &1.name)
     end

@@ -1,12 +1,16 @@
-defmodule Flint.Pipeline do
+defmodule Flint.Changeset do
   @moduledoc """
-  The core pipeline of Flint. `Flint.Pipeline` uses the module attributes that are collected when using the `Flint.Schema`
-  macros to perform transformations and validations.
-
-  See the `Pipeline` section of the `Flint` documentation for more information.
+  The base `changeset` function defined by `Flint`. `Flint.Changeset` uses the module attributes
+  that are collected when using the `Flint.Schema` macros to perform transformations and validations.
   """
   import Ecto.Changeset
 
+  @doc """
+  Uses the quoted expressions from the `Flint.Schema.field` and `Flint.Schema.field!`
+  `do` blocks to validate the changeset.
+
+  You can optionally pass bindings to be added to the evaluation context.
+  """
   def validate_do_blocks(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
@@ -67,14 +71,11 @@ defmodule Flint.Pipeline do
 
   @doc """
   Given a `Flint` (or `Ecto`) schema and params (can be a map, struct of the given schema, or an existing changeset),
-  applies all steps of the `Flint.Pipeline` to generate a new changeset.
+  applies all steps of the `Flint.Changeset` to generate a new changeset.
 
   This function casts all fields (recursively casting all embeds using this same function),
   validates required fields (specified using the bang (`!`) macros exposed by `Flint`),
-  applies pre-transformations, validations, and post-transformations, before
   outputting the resulting `Ecto.Changeset`.
-
-  See the `Pipeline` section of the `README` for more details.
   """
   def changeset(schema, params \\ %{}, bindings \\ []) do
     module = schema.__struct__
@@ -89,11 +90,8 @@ defmodule Flint.Pipeline do
       end
 
     required = module.__schema__(:required)
-
     fields = fields |> MapSet.difference(embedded_fields)
-
     required_embeds = Enum.filter(required, &(&1 in embedded_fields))
-
     required_fields = Enum.filter(required, &(&1 in fields))
 
     changeset =

@@ -38,6 +38,50 @@ defmodule Flint.Extensions.EctoValidations do
     ne: :not_equal_to
   ]
   ```
+
+  ## Example
+
+  ```elixir
+  defmodule Person do
+    use Flint.Schema
+
+    embedded_schema do
+      field! :first_name, :string,  max: 10, min: 5
+      field! :last_name, :string, min: 5, max: 10
+      field :favorite_colors, {:array, :string}, subset_of: ["red", "blue", "green"]
+      field! :age, :integer, greater_than: 0, less_than: max_age
+    end
+  end
+  ```
+
+  ```elixir
+  Person.changeset(
+    %Person{},
+    %{first_name: "Bob", last_name: "Smith", favorite_colors: ["red", "blue", "pink"], age: 101},
+    [max_age: 100]
+  )
+  ```
+
+  ```elixir
+  #Ecto.Changeset<
+    action: nil,
+    changes: %{
+      age: 101,
+      first_name: "Bob",
+      last_name: "Smith",
+      favorite_colors: ["red", "blue", "pink"]
+    },
+    errors: [
+      first_name: {"should be at least %{count} character(s)",
+      [count: 5, validation: :length, kind: :min, type: :string]},
+      favorite_colors: {"has an invalid entry", [validation: :subset, enum: ["red", "blue", "green"]]},
+      age: {"must be less than %{number}", [validation: :number, kind: :less_than, number: 100]}
+    ],
+    data: #Person<>,
+    valid?: false,
+    ...
+  >
+  ```
   """
   use Flint.Extension
 

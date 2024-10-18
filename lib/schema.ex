@@ -51,7 +51,7 @@ defmodule Flint.Schema do
   end
 
   @doc """
-  Wraps `Ecto`'s `field` macro to accept additional options which are consumed by `Flint.Pipeline`.
+  Wraps `Ecto`'s `field` macro to accept additional options which are consumed by `Flint.Changeset`.
 
   `Flint` options that are passed to `field` are stripped by `Flint` before passing them to `Ecto.Schema.field` and
   stored in module attributed for the schema's module.
@@ -177,7 +177,7 @@ defmodule Flint.Schema do
   Marks a field as required by storing metadata in a module attribute, then calls `Flint.Schema.field`.
 
   The metadata tracking is not enforced at the schema / struct level (eg. through enforced keys), but rather
-  at the schema validation level (through something such as `Flint.Pipeline.changeset`).
+  at the schema validation level (through something such as `Flint.Changeset.changeset`).
   """
   defmacro field!(name, type \\ :string, opts \\ [])
 
@@ -210,7 +210,7 @@ defmodule Flint.Schema do
   end
 
   @doc """
-  Wraps `Ecto`'s `embeds_one` macro to accept additional options which are consumed by `Flint.Pipeline`.
+  Wraps `Ecto`'s `embeds_one` macro to accept additional options which are consumed by `Flint.Changeset`.
 
   `Flint` options that are passed to `embeds_one` are stripped by `Flint` before passing them to `Ecto.Schema.embeds_one` and
   stored in module attributed for the schema's module.
@@ -265,7 +265,7 @@ defmodule Flint.Schema do
   Marks an embeds_one field as required by storing metadata in a module attribute, then calls `Flint.Schema.embeds_one`.
 
   The metadata tracking is not enforced at the schema / struct level (eg. through enforced keys), but rather
-  at the schema validation level (through something such as `Flint.Pipeline.changeset`).
+  at the schema validation level (through something such as `Flint.Changeset.changeset`).
 
   The following default options are passed to `Flint.Schema.embeds_one!` and can be overriden at the `Application` level or at the
   local call level.
@@ -323,7 +323,7 @@ defmodule Flint.Schema do
   end
 
   @doc """
-  Wraps `Ecto`'s `embeds_many` macro to accept additional options which are consumed by `Flint.Pipeline`.
+  Wraps `Ecto`'s `embeds_many` macro to accept additional options which are consumed by `Flint.Changeset`.
 
   `Flint` options that are passed to `embeds_many` are stripped by `Flint` before passing them to `Ecto.Schema.embeds_many` and
   stored in module attributed for the schema's module.
@@ -377,7 +377,7 @@ defmodule Flint.Schema do
   Marks an embeds_many field as required by storing metadata in a module attribute, then calls `Flint.Schema.embeds_many`.
 
   The metadata tracking is not enforced at the schema / struct level (eg. through enforced keys), but rather
-  at the schema validation level (through something such as `Flint.Pipeline.changeset`).
+  at the schema validation level (through something such as `Flint.Changeset.changeset`).
 
   The following default options are passed to `Flint.Schema.embeds_many!` and can be overriden at the `Application` level or at the
   local call level.
@@ -524,24 +524,22 @@ defmodule Flint.Schema do
     {extensions, _opts} =
       Keyword.pop(opts, :extensions, Flint.default_extensions())
 
-    extensions =
-      extensions
-      |> Enum.map(
-        &Macro.expand_literals(
-          &1,
-          Map.update(__ENV__, :aliases, [], fn aliases ->
-            aliases ++
-              [
-                {When, Flint.Extensions.When},
-                {Accessible, Flint.Extensions.Accessible},
-                {EctoValidations, Flint.Extensions.EctoValidations},
-                {Embedded, Flint.Extensions.Embedded},
-                {JSON, Flint.Extensions.JSON},
-                {PreTransforms, Flint.Extensions.PreTransforms},
-                {PostTransforms, Flint.Extensions.PostTransforms}
-              ]
-          end)
-        )
+    {extensions, _bindings} =
+      Code.eval_quoted(
+        extensions,
+        binding(),
+        Map.update(__CALLER__, :aliases, [], fn aliases ->
+          aliases ++
+            [
+              {When, Flint.Extensions.When},
+              {Accessible, Flint.Extensions.Accessible},
+              {EctoValidations, Flint.Extensions.EctoValidations},
+              {Embedded, Flint.Extensions.Embedded},
+              {JSON, Flint.Extensions.JSON},
+              {PreTransforms, Flint.Extensions.PreTransforms},
+              {PostTransforms, Flint.Extensions.PostTransforms}
+            ]
+        end)
       )
 
     attributes =
@@ -580,7 +578,6 @@ defmodule Flint.Schema do
 
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
     Module.register_attribute(__CALLER__.module, :blocks, accumulate: true)
-    Module.register_attribute(__CALLER__.module, :pre_transforms, accumulate: true)
     # Extension-Related Attributes
     Module.register_attribute(__CALLER__.module, :extension_attributes, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extension_options, accumulate: true)
@@ -615,7 +612,7 @@ defmodule Flint.Schema do
         def __schema__(:extensions), do: unquote(extensions)
         def __schema__(:extra_options), do: @extra_options |> Enum.reverse()
 
-        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Pipeline
+        defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Changeset
         def new(params \\ %{}, bindings \\ []), do: Flint.Schema.new(__MODULE__, params, bindings)
 
         def new!(params \\ %{}, bindings \\ []),

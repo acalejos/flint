@@ -56,6 +56,10 @@ defmodule Flint.MixProject do
         Types: [Flint.Type, Flint.Types.Union],
         Extensions: [
           Flint.Extension,
+          Flint.Extensions.PreTransforms,
+          Flint.Extensions.When,
+          Flint.Extensions.EctoValidations,
+          Flint.Extensions.PostTransforms,
           Flint.Extensions.Accessible,
           Flint.Extensions.Embedded,
           Flint.Extensions.JSON

@@ -1,4 +1,50 @@
 defmodule Flint.Extensions.PostTransforms do
+  @moduledoc ~S"""
+  The `PostTransforms` extension adds the `:map` option to `Flint` schemas.
+
+  This works similarly to the `PreTransforms` extension, but uses the `:map` option rather than
+  the `:derive` option used by `PreTransforms`, and by default, applies to the field after all validations.
+
+  The same caveats apply to the `:map` expression as all other expressions, with the exception that the
+  `:map` function **only** accepts arity-1 anonymous functions or non-anonymous function expressions
+  (eg. using variable replacement).
+
+  In the following example, `:derived` is used to normalize incoming strings to downcase to prepare for
+  the validation, then the output is mapped to the uppercase string using the `:map` option.
+
+  ```elixir
+  defmodule Character do
+    use Flint.Schema
+
+    embedded_schema do
+      field! :type, :string, derive: &String.downcase/1, map: String.upcase(type) do
+        type not in ~w[elf human] -> "Expected elf or human, got: #{type}"
+      end
+
+      field! :age, :integer do
+        age < 0 ->
+          "Nobody can have a negative age"
+
+        type == "elf" and age > max_elf_age ->
+          "Attention! The elf has become a bug! Should be dead already!"
+
+        type == "human" and age > max_human_age ->
+          "Expected human to have up to #{max_human_age}, got: #{age}"
+      end
+    end
+  end
+  ```
+
+  ```elixir
+  max_elf_age = 400
+  max_human_age = 120
+  Character.new!(%{type: "Elf", age: 10}, binding())
+  ```
+
+  ```elixir
+  %Character{type: "ELF", age: 10}
+  ```
+  """
   use Flint.Extension
   import Ecto.Changeset
 
@@ -7,7 +53,7 @@ defmodule Flint.Extensions.PostTransforms do
   @doc """
   Applies transformations to each field according to the `:map` options passed in the schema specification.
 
-  These transformations are applied after validations when used within the default `Flint.Pipeline.changeset` implementation.
+  These transformations are applied after validations when used within the default `Flint.Changeset.changeset` implementation.
 
   Accepts optional bindings which are passed to evaluated code.
   """
