@@ -135,7 +135,7 @@ defmodule Flint.Schema do
               "Required option #{inspect(option_name)} on field #{inspect(name)} not found."
             )
 
-        if required && validator && not validator.(value),
+        if not is_nil(value) && validator && not validator.(value),
           do:
             raise(
               ArgumentError,
