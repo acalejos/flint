@@ -438,13 +438,16 @@ defmodule Flint.Schema do
   def __embeds_module__(env, module, opts, block) do
     {pk, opts} = Keyword.pop(opts, :primary_key, false)
 
+    extensions =  Module.get_attribute(env.module, :extensions, [])
+
     block =
       quote do
-        use Flint,
+        use Flint.Schema,
           primary_key: unquote(Macro.escape(pk)),
           schema: [
             unquote(block)
-          ]
+          ],
+          extensions: unquote(extensions)
       end
 
     Module.create(module, block, env)
@@ -582,6 +585,7 @@ defmodule Flint.Schema do
     Module.register_attribute(__CALLER__.module, :extension_attributes, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extension_options, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extra_options, accumulate: true)
+    Module.put_attribute(__CALLER__.module, :extensions, extensions)
 
     attrs =
       Enum.map(attributes, fn {_extension, field} = attr ->
@@ -609,7 +613,7 @@ defmodule Flint.Schema do
         def __schema__(:required), do: @required |> Enum.reverse()
         def __schema__(:blocks), do: @blocks |> Enum.reverse()
         # Extension-Related Reflections
-        def __schema__(:extensions), do: unquote(extensions)
+        def __schema__(:extensions), do: @extensions
         def __schema__(:extra_options), do: @extra_options |> Enum.reverse()
 
         defdelegate changeset(schema, params \\ %{}, bindings \\ []), to: Flint.Changeset
