@@ -3,7 +3,6 @@ defmodule Flint.Changeset do
   The base `changeset` function defined by `Flint`. `Flint.Changeset` uses the module attributes
   that are collected when using the `Flint.Schema` macros to perform transformations and validations.
   """
-  import Ecto.Changeset
 
   @doc """
   Uses the quoted expressions from the `Flint.Schema.field` and `Flint.Schema.field!`
@@ -18,10 +17,9 @@ defmodule Flint.Changeset do
     all_validations =
       module.__schema__(:blocks)
 
-    for {field, validations} <- all_validations, reduce: changeset do
+    for {field, block} <- all_validations, reduce: changeset do
       changeset ->
         bindings = bindings ++ Enum.into(changeset.changes, [])
-        block = Keyword.get(validations, :block, [])
 
         block
         |> Enum.with_index()
@@ -37,7 +35,7 @@ defmodule Flint.Changeset do
                       apply(invalid?, [])
 
                     {:arity, 1} when not is_nil(field) ->
-                      apply(invalid?, [fetch_change!(changeset, field)])
+                      apply(invalid?, [Ecto.Changeset.fetch_change!(changeset, field)])
 
                     _ ->
                       raise ArgumentError,
@@ -50,7 +48,7 @@ defmodule Flint.Changeset do
               {err_msg, _bindings} = Code.eval_quoted(quoted_err, bindings, env)
 
               if invalid? do
-                add_error(chngset, field, err_msg,
+                Ecto.Changeset.add_error(chngset, field, err_msg,
                   validation: :block,
                   clause: index + 1
                 )
@@ -59,7 +57,7 @@ defmodule Flint.Changeset do
               end
             rescue
               _ ->
-                add_error(
+                Ecto.Changeset.add_error(
                   chngset,
                   field,
                   "Error evaluating expression in Clause ##{index + 1} of `do:` block"
@@ -96,20 +94,20 @@ defmodule Flint.Changeset do
 
     changeset =
       schema
-      |> cast(params, fields |> MapSet.to_list())
+      |> Ecto.Changeset.cast(params, fields |> MapSet.to_list())
 
     changeset =
       for field <- embedded_fields, reduce: changeset do
         changeset ->
           changeset
-          |> cast_embed(field,
+          |> Ecto.Changeset.cast_embed(field,
             required: field in required_embeds,
             with: &changeset(&1, &2, bindings)
           )
       end
 
     changeset
-    |> validate_required(required_fields)
+    |> Ecto.Changeset.validate_required(required_fields)
     |> validate_do_blocks(bindings)
   end
 end
