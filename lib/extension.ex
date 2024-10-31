@@ -124,8 +124,30 @@ defmodule Flint.Extension do
     many_extension_kinds: [:extensions],
     default_extensions: [extensions: Flint.Extension.Dsl]
 
+  defmacro field(name, type \\ :string, opts \\ []) do
+    quote do
+      entity do
+        name(unquote(name))
+        type(unquote(type))
+        opts(unquote(opts))
+      end
+    end
+  end
+
+  defmacro field!(name, type \\ :string, opts \\ []) do
+    quote do
+      entity do
+        name(unquote(name))
+        type(unquote(type))
+        opts(unquote(opts))
+        required(true)
+      end
+    end
+  end
+
   defmacro __using__(opts) do
     quote do
+      import Flint.Extension
       unquote_splicing(super(opts))
 
       defmacro __using__(opts) do
@@ -142,6 +164,9 @@ defmodule Flint.Extension do
       @doc false
       def attribute_names(),
         do: Spark.Dsl.Extension.get_entities(__MODULE__, :attributes) |> Enum.map(& &1.name)
+
+      def field_names(),
+        do: Spark.Dsl.Extension.get_entities(__MODULE__, :fields) |> Enum.map(& &1.name)
     end
   end
 end
