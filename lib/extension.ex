@@ -7,7 +7,8 @@ defmodule Flint.Extension do
 
   1. Schema-level attributes
   2. Field-level additional options
-  3. Injected Code
+  3. Default `field` and `field!` definitions
+  4. Injected Code
 
   Extension authors define what fields / options / attributes `Flint` should look for in the module / schema definition and
   strip out and store in a schema reflection function, but it is still the resposibility of either the extension author or
@@ -98,6 +99,53 @@ defmodule Flint.Extension do
   ]
   ```
 
+  ## Default `field` and `field!` definitions
+
+  Sometimes you might want to always have one of more fields defined for a given schema type without having
+  to write it each time. Much in the same way that, by default, the `@prmimary_key` attribute will set an `:id` field
+  for the schema, you might wish to template out some fields and values.
+
+  If you want to define fields that are defined by default in a schema that uses your extension, just use the
+  `field` and `field!` macros. These accept the same arguments as their counterparts in `Flint.Schema`, and will be
+  added at the end of the `embedded_schema` definition.
+
+  > #### Duplicate Fields {: .info}
+  >
+  > Note that if you define a template for a field in your extension then anyone who uses your extension will be
+  > unable to override that field name with their own definition.
+
+  ### Example
+
+  Given the following extension:
+
+  ```elixir
+  defmodule Event do
+    use Flint.Extension
+
+    field! :timestamp, :utc_datetime_usec
+    field! :id, :binary_id
+  end
+  ```
+
+  and this schema:
+
+  ```elixir
+  defmodule Webhook do
+    use Flint.Schema, extensions: [Event, Embedded]
+
+    embedded_schema do
+      field :route, :string
+    end
+  end
+  ```
+
+  Then any schema that uses this extension will have these fields by default:
+
+  ```elixir
+  Webhook.__schema__(:fields)
+  # [:route, :timestamp, :id]
+  ```
+
   ## Injected Code
 
   Lastly, extensions allow you to define custom `__using__/1` macros which will be passed through
@@ -124,6 +172,9 @@ defmodule Flint.Extension do
     many_extension_kinds: [:extensions],
     default_extensions: [extensions: Flint.Extension.Dsl]
 
+  @doc """
+  Registers a default field to be added to any `embedded_schema` using this extension
+  """
   defmacro field(name, type \\ :string, opts \\ []) do
     quote do
       entity do
@@ -134,6 +185,9 @@ defmodule Flint.Extension do
     end
   end
 
+  @doc """
+  Same as `field` but marks the field as required
+  """
   defmacro field!(name, type \\ :string, opts \\ []) do
     quote do
       entity do
