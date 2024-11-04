@@ -41,43 +41,12 @@ defmodule Flint.Extension.Dsl do
     args: [:name],
     schema: @common_schema
   }
-  @field %Spark.Dsl.Entity{
-    name: :entity,
-    target: Flint.Extension.Entity,
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name as an atom."
-      ],
-      type: [
-        required: false,
-        default: :string,
-        # Let the call to `field` inside the schema handle validating
-        type: :any
-      ],
-      opts: [
-        type: :keyword_list,
-        default: [],
-        required: false
-      ],
-      required: [
-        type: :boolean,
-        default: false,
-        doc:
-          "Whether the field is required. If it is required and not provided there will be a compile time error thrown."
-      ]
-    ]
-  }
+
   @attributes %Spark.Dsl.Section{
     name: :attributes,
     entities: [@attribute],
     top_level?: true
   }
-  @fields %Spark.Dsl.Section{
-    name: :fields,
-    entities: [@field],
-    top_level?: true
-  }
-  use Spark.Dsl.Extension, sections: [@attributes, @options, @fields]
+
+  use Spark.Dsl.Extension, sections: [@attributes, @options]
 end

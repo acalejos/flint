@@ -443,6 +443,7 @@ defmodule Flint.Schema do
     block =
       quote do
         use Flint.Schema,
+          inherit: false,
           primary_key: unquote(Macro.escape(pk)),
           schema: [
             unquote(block)
@@ -458,22 +459,6 @@ defmodule Flint.Schema do
   Wraps `Ecto`'s `embedded_schema` macro, injecting `Flint`'s custom macro implementation into the module space.
   """
   defmacro embedded_schema(do: block) do
-    # TODO: Do we want to allow an `overridable` field?
-    field_calls =
-      for {_extension, field} <- Module.get_attribute(__CALLER__.module, :extension_fields) do
-        case field do
-          %{name: name, opts: opts, type: type, required: true} ->
-            quote do
-              field! unquote(name), unquote(type), unquote_splicing(opts)
-            end
-
-          %{name: name, opts: opts, type: type} ->
-            quote do
-              field unquote(name), unquote(type), unquote_splicing(opts)
-            end
-        end
-      end
-
     quote do
       Ecto.Schema.embedded_schema do
         import Ecto.Schema,
@@ -493,7 +478,7 @@ defmodule Flint.Schema do
         @after_compile Flint.Schema
 
         unquote(block)
-        unquote_splicing(field_calls)
+        unquote_splicing(Module.get_attribute(__CALLER__.module, :extension_fields, []))
       end
     end
   end
@@ -540,6 +525,7 @@ defmodule Flint.Schema do
 
   defmacro __using__(opts) do
     {schema, opts} = Keyword.pop(opts, :schema)
+    {inherit?, opts} = Keyword.pop(opts, :inherit, true)
 
     {extensions, _opts} =
       Keyword.pop(opts, :extensions, Flint.default_extensions())
@@ -562,56 +548,37 @@ defmodule Flint.Schema do
         end)
       )
 
-    attributes =
+    extension_names =
       extensions
-      |> Enum.flat_map(fn extension ->
-        extension =
-          case extension do
-            {ext, _opts} when is_atom(ext) ->
-              ext
-
-            ext when is_atom(ext) ->
-              ext
-          end
-
-        for attr <- Spark.Dsl.Extension.get_entities(extension, :attributes) do
-          {extension, attr}
-        end
+      |> Enum.map(fn
+        {ext, _opts} when is_atom(ext) -> ext
+        ext when is_atom(ext) -> ext
       end)
 
-    options =
-      extensions
-      |> Enum.flat_map(fn extension ->
-        extension =
-          case extension do
-            {ext, _opts} when is_atom(ext) ->
-              ext
+    %{attributes: attributes, options: options} =
+      [:attributes, :options, :fields, :embeds_ones]
+      |> Enum.map(fn entity_type ->
+        entities =
+          extension_names
+          |> Enum.flat_map(fn extension ->
+            for attr <- Spark.Dsl.Extension.get_entities(extension, entity_type) do
+              {extension, attr}
+            end
+          end)
 
-            ext when is_atom(ext) ->
-              ext
-          end
-
-        for attr <- Spark.Dsl.Extension.get_entities(extension, :options) do
-          {extension, attr}
-        end
+        {entity_type, entities}
       end)
+      |> Map.new()
 
-    fields =
-      extensions
-      |> Enum.flat_map(fn extension ->
-        extension =
-          case extension do
-            {ext, _opts} when is_atom(ext) ->
-              ext
-
-            ext when is_atom(ext) ->
-              ext
-          end
-
-        for attr <- Spark.Dsl.Extension.get_entities(extension, :fields) do
-          {extension, attr}
+    extension_schemas =
+      if inherit? do
+        for extension <- extension_names,
+            row <- extension.template_schema() do
+          row
         end
-      end)
+      else
+        []
+      end
 
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
     Module.register_attribute(__CALLER__.module, :blocks, accumulate: true)
@@ -620,7 +587,7 @@ defmodule Flint.Schema do
     Module.register_attribute(__CALLER__.module, :extension_options, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extra_options, accumulate: true)
     Module.put_attribute(__CALLER__.module, :extensions, extensions)
-    Module.put_attribute(__CALLER__.module, :extension_fields, fields)
+    Module.put_attribute(__CALLER__.module, :extension_fields, extension_schemas)
 
     attrs =
       Enum.map(attributes, fn {_extension, field} = attr ->

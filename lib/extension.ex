@@ -99,14 +99,17 @@ defmodule Flint.Extension do
   ]
   ```
 
-  ## Default `field` and `field!` definitions
+  ## Default `embedded_schema` definitions
 
   Sometimes you might want to always have one of more fields defined for a given schema type without having
   to write it each time. Much in the same way that, by default, the `@prmimary_key` attribute will set an `:id` field
   for the schema, you might wish to template out some fields and values.
 
-  If you want to define fields that are defined by default in a schema that uses your extension, just use the
-  `field` and `field!` macros. These accept the same arguments as their counterparts in `Flint.Schema`, and will be
+  If you want to define fields that are defined by default in a schema that uses your extension, you can use the
+  `embedded_schema` macro within an extension and all `field`, `embeds_one` and `embeds_many` declarations will be
+  merged into the target schema that uses your extension.
+
+  These accept the same arguments as their counterparts in `Flint.Schema`, and will be
   added at the end of the `embedded_schema` definition.
 
   > #### Duplicate Fields {: .info}
@@ -122,8 +125,10 @@ defmodule Flint.Extension do
   defmodule Event do
     use Flint.Extension
 
-    field! :timestamp, :utc_datetime_usec
-    field! :id, :binary_id
+    embedded_schema do
+      field! :timestamp, :utc_datetime_usec
+      field! :id, :binary_id
+    end
   end
   ```
 
@@ -172,34 +177,19 @@ defmodule Flint.Extension do
     many_extension_kinds: [:extensions],
     default_extensions: [extensions: Flint.Extension.Dsl]
 
-  @doc """
-  Registers a default field to be added to any `embedded_schema` using this extension
-  """
-  defmacro field(name, type \\ :string, opts \\ []) do
-    quote do
-      entity do
-        name(unquote(name))
-        type(unquote(type))
-        opts(unquote(opts))
-      end
-    end
+  @doc false
+  defmacro embedded_schema(do: {:__block__, _, contents}) do
+    Module.put_attribute(__CALLER__.module, :embedded_schema, contents)
   end
 
-  @doc """
-  Same as `field` but marks the field as required
-  """
-  defmacro field!(name, type \\ :string, opts \\ []) do
-    quote do
-      entity do
-        name(unquote(name))
-        type(unquote(type))
-        opts(unquote(opts))
-        required(true)
-      end
-    end
+  @doc false
+  defmacro embedded_schema(do: block) do
+    Module.put_attribute(__CALLER__.module, :embedded_schema, [block])
   end
 
   defmacro __using__(opts) do
+    Module.put_attribute(__CALLER__.module, :embedded_schema, [])
+
     quote do
       import Flint.Extension
       unquote_splicing(super(opts))
@@ -211,6 +201,10 @@ defmodule Flint.Extension do
 
       defoverridable __using__: 1
 
+      def template_schema() do
+        @embedded_schema
+      end
+
       @doc false
       def option_names(),
         do: Spark.Dsl.Extension.get_entities(__MODULE__, :options) |> Enum.map(& &1.name)
@@ -218,9 +212,6 @@ defmodule Flint.Extension do
       @doc false
       def attribute_names(),
         do: Spark.Dsl.Extension.get_entities(__MODULE__, :attributes) |> Enum.map(& &1.name)
-
-      def field_names(),
-        do: Spark.Dsl.Extension.get_entities(__MODULE__, :fields) |> Enum.map(& &1.name)
     end
   end
 end
