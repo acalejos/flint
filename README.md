@@ -31,7 +31,7 @@ Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for
 ```elixir
 def deps do
   [
-    {:flint, "~> 0.4"}
+    {:flint, "~> 0.5"}
   ]
 end
 ```
