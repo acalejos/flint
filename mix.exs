@@ -50,7 +50,7 @@ defmodule Flint.MixProject do
     [
       main: "Flint",
       groups_for_extras: [
-        Notebooks: Path.wildcard("notebooks/*.livemd")
+        Notebooks: ~r"notebooks/.*\.(md|livemd)"
       ],
       groups_for_modules: [
         Types: [Flint.Type, Flint.Types.Union],
