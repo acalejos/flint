@@ -3,11 +3,11 @@ defmodule Flint.Extension do
   `Flint` extensions allow developers to easily hook into `Flint` metaprogramming lifecycle to add extra data into the embedded
   schema reflection functions.
 
-  Flint currently offers three ways to extend behavior:
+  Flint currently offers four ways to extend behavior:
 
   1. Schema-level attributes
   2. Field-level additional options
-  3. Default `field` and `field!` definitions
+  3. Default `embedded_schema` definitions
   4. Injected Code
 
   Extension authors define what fields / options / attributes `Flint` should look for in the module / schema definition and

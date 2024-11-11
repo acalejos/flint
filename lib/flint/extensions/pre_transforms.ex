@@ -30,7 +30,7 @@ defmodule Flint.Extensions.PreTransforms do
     embedded_schema do
       field! :category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3]
       field! :rating, :integer, when: category == target_category
-      field :score, derive: rating + category, :integer, gt: 1, lt: 100, when: score > rating
+      field :score, :integer, derive: rating + category, gt: 1, lt: 100, when: score > rating
     end
   end
   ```

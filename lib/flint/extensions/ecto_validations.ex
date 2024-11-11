@@ -22,7 +22,6 @@ defmodule Flint.Extensions.EctoValidations do
   * `:min` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
   * `:max` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
   * `:count` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
-  * `:when` - Let's you define an arbitrary boolean condition on the field which can refer to any `field` defined above it or itself. **NOTE** The `:when` option will output a generic error on failure, so if verbosity is desired, an [advanced validation](#advanced-validations) is more appropriate.
 
   ## Aliases
 
@@ -159,7 +158,7 @@ defmodule Flint.Extensions.EctoValidations do
             validate_subset: validate_subset_arg
           ]
           |> Enum.map(fn
-            {k, args} when is_list(args) ->
+            {k, args} when k in [:validate_number, :validate_length] ->
               {k, Enum.reject(args, fn {_k, v} -> is_nil(v) end)}
 
             other ->
