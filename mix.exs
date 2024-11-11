@@ -49,6 +49,9 @@ defmodule Flint.MixProject do
   defp docs do
     [
       main: "Flint",
+      extras: [
+        "notebooks/feature_guide.livemd"
+      ],
       groups_for_extras: [
         Notebooks: ~r"notebooks/.*\.(md|livemd)"
       ],
