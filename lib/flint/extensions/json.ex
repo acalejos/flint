@@ -119,6 +119,8 @@ defmodule Flint.Extensions.JSON do
 
   @doc false
   def encode_to_map(module, struct) do
+    embeds = module.__schema__(:embeds)
+
     struct
     |> Ecto.embedded_dump(:json)
     |> Enum.reduce(%{}, fn {key, val}, acc ->
@@ -126,6 +128,14 @@ defmodule Flint.Extensions.JSON do
       json_key = field_opts[:name] || to_string(key)
 
       cond do
+        key in embeds ->
+          if mod = get_embedded_module(module, key) do
+            embed_val = encode_embedded(mod, Map.get(struct, key))
+            Map.put(acc, json_key, embed_val)
+          else
+            acc
+          end
+
         field_opts[:ignore] ->
           acc
 
@@ -142,6 +152,20 @@ defmodule Flint.Extensions.JSON do
     module.__schema__(:extra_options)
     |> Keyword.get(field, [])
     |> Enum.into(%{})
+  end
+
+  defp get_embedded_module(module, key) do
+    case module.__schema__(:type, key) do
+      {_, {_, %{related: embed_module, cardinality: card}}} -> {embed_module, card}
+      _ -> nil
+    end
+  end
+
+  defp encode_embedded({embed_module, cardinality}, value) do
+    case cardinality do
+      :one -> encode_to_map(embed_module, value)
+      :many -> Enum.map(value, fn s -> encode_to_map(embed_module, s) end)
+    end
   end
 
   defmacro __using__(opts) do
