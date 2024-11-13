@@ -113,7 +113,7 @@ Book.__schema__(:required)
 Book.new!(%{title: "The old man and the sea"})
 ```
 
-The generated `changeset` functions will also enfore `:required` validations for embedded fields, so if any required field of the `:author` embedded field is not present, then `Book` will fail validation.
+The generated `changeset` functions will also enforce `:required` validations for embedded fields, so if any required field of the `:author` embedded field is not present, then `Book` will fail validation.
 
 ```elixir
 Book.new!(%{
@@ -165,7 +165,7 @@ end
 {:module, Book_b, <<70, 79, 82, 49, 0, 0, 33, ...>>, :ok}
 ```
 
-Note the quirk that if the embedded field is not marked as required, but one of its subfields is, then if the embedded struct is partially intialized it will fail if the required subfield is missing
+Note the quirk that if the embedded field is not marked as required, but one of its subfields is, then if the embedded struct is partially initialized it will fail if the required subfield is missing
 
 ```elixir
 Book_b.new!(%{
@@ -278,7 +278,7 @@ Person.changeset(%Person{}, mark_twain)
 >
 ```
 
-This generates an `Ecto.Changeset`. Let's remove one of the fiels that had been marked as required.
+This generates an `Ecto.Changeset`. Let's remove one of the fields that had been marked as required.
 
 ```elixir
 mark_twain_bad = Map.drop(mark_twain, [:first_name])
@@ -462,7 +462,7 @@ Flint currently offers four ways to extend behavior:
 
 <!-- livebook:{"break_markdown":true} -->
 
-Extension let you define schema-level attributes which can then be reflected upon later. This is a pattern already used in `Ecto` such as with the `@primary_key` atttibute, which can then be retrieved with `__schema__(:primary_key)`. `Flint` simply lets you extend this to any module attribute you want.
+Extension let you define schema-level attributes which can then be reflected upon later. This is a pattern already used in `Ecto` such as with the `@primary_key` attribute, which can then be retrieved with `__schema__(:primary_key)`. `Flint` simply lets you extend this to any module attribute you want.
 
 However, you can still use this to modify attributes already used by `Ecto`. Let's take a look at the built-in `Embedded` extension, which sets attributes to defaults which make more sense when using an `embedded_schema` rather than a `schema`, as an example.
 
@@ -525,7 +525,7 @@ Notice that there is no `:id` field defined, which would be set if the `@primary
 
 <!-- livebook:{"break_markdown":true} -->
 
-This built-in`JSON` extension is inspired by how marshalling is done in [Go](https://pkg.go.dev/encoding/json#Marshal), ands regsiters three additional options that can be used to annotate a field. It then uses that option information to define implementations for `Jason` and `Poison` `Encoder` protocols, depending on which you specify.
+This built-in `JSON` extension is inspired by how marshalling is done in [Go](https://pkg.go.dev/encoding/json#Marshal), and registers three additional options that can be used to annotate a field. It then uses that option information to define implementations for `Jason` and `Poison` `Encoder` protocols, depending on which you specify.
 
 You can see from that this uses the `__schema__(:extra_options)` reflection function on the schema, which stores all of the options registered across all extensions.
 
@@ -917,7 +917,7 @@ other `Ecto.ParameterizedType` callbacks. You may still override the newly set d
 
 Just supply all options that you wish to be defaults as extra options when using `Flint.Type`.
 
-You may override any of the inherited callbacks inherity from the extended module
+You may override any of the inherited callbacks inherit from the extended module
 in the case that you wish to customize the module further.
 
 ```elixir
@@ -1140,7 +1140,7 @@ your data.
 - `:not_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
 - `:format` ([`Ecto.Changeset.validate_format/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_format/4))
 - `:subset_of` ([`Ecto.Changeset.validate_subset/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_subset/4))
-- `:in` ([`Ecto.Changeset.validate_inlusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_inclusion/4))
+- `:in` ([`Ecto.Changeset.validate_inclusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_inclusion/4))
 - `:not_in` ([`Ecto.Changeset.validate_exclusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_exclusion/4))
 - `:is` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
 - `:min` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
