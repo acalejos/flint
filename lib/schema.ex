@@ -5,8 +5,18 @@ defmodule Flint.Schema do
   When you `use Flint`, all of these definitions are imported into the module and override the default
   `Ecto.Schema` implementations. You should not have to directly interact with this module.
   """
+  alias TypedEctoSchema.TypeBuilder
   require Logger
   import Ecto.Changeset
+
+  @schema_function_names [
+    :field,
+    :field!,
+    :embeds_one,
+    :embeds_one!,
+    :embeds_many,
+    :embeds_many!
+  ]
 
   @error_regex ~r"%{(\w+)}"
 
@@ -149,8 +159,10 @@ defmodule Flint.Schema do
       Module.put_attribute(__CALLER__.module, :extra_options, {name, extra_options})
     end
 
+    {_overriden_type, ecto_opts} = Keyword.pop(opts, :__typed_ecto_type__)
+
     quote do
-      Ecto.Schema.field(unquote(name), unquote(type), unquote(opts))
+      Ecto.Schema.field(unquote(name), unquote(type), unquote(ecto_opts))
 
       unquote(TypedEctoSchema.TypeBuilder).add_field(
         __MODULE__,
@@ -517,17 +529,55 @@ defmodule Flint.Schema do
         import Flint.Schema
         @after_compile Flint.Schema
 
-        require unquote(TypedEctoSchema.TypeBuilder)
+        require unquote(TypeBuilder)
 
-        unquote(TypedEctoSchema.TypeBuilder).init(unquote(opts))
+        unquote(TypeBuilder).init(unquote(opts))
 
-        unquote(TypedEctoSchema.TypeBuilder).add_primary_key(__MODULE__)
-        unquote(block)
-        unquote(TypedEctoSchema.TypeBuilder).enforce_keys()
+        unquote(TypeBuilder).add_primary_key(__MODULE__)
+        unquote(apply_to_block(block))
+        unquote(TypeBuilder).enforce_keys()
         unquote_splicing(Module.get_attribute(__CALLER__.module, :extension_fields, []))
-        unquote(TypedEctoSchema.TypeBuilder).define_type(unquote(opts))
+        unquote(TypeBuilder).define_type(unquote(opts))
       end
     end
+  end
+
+  defp apply_to_block(block) do
+    calls =
+      case block do
+        {:__block__, _, calls} ->
+          calls
+
+        call ->
+          [call]
+      end
+
+    new_calls = Enum.map(calls, &transform_expression(&1))
+
+    {:__block__, [], new_calls}
+  end
+
+  defp transform_expression({:"::", _, [{function_name, _, [name, ecto_type, opts]}, type]})
+       when function_name in @schema_function_names do
+    transform_expression(
+      {function_name, [], [name, ecto_type, [{:__typed_ecto_type__, Macro.escape(type)} | opts]]}
+    )
+  end
+
+  defp transform_expression({:"::", _, [{function_name, _, [name, ecto_type]}, type]})
+       when function_name in @schema_function_names do
+    transform_expression(
+      {function_name, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
+    )
+  end
+
+  defp transform_expression({:"::", _, [{field, _, [name]}, type]})
+       when field in [:field, :field!] do
+    transform_expression({field, [], [name, :string, [__typed_ecto_type__: Macro.escape(type)]]})
+  end
+
+  defp transform_expression(expr) do
+    expr
   end
 
   # From https://github.com/elixir-ecto/ecto/blob/1918cdc93d5543c861682fdfb4105a35d21135cc/lib/ecto/schema.ex#L2532
