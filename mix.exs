@@ -32,6 +32,7 @@ defmodule Flint.MixProject do
     [
       {:ecto, "~> 3.12"},
       {:spark, "~> 2.2"},
+      {:typed_ecto_schema, "~> 0.4", runtime: false},
       {:jason, "~> 1.4", optional: true},
       {:poison, "~> 6.0", optional: true},
       {:ex_doc, "~> 0.31.0", only: :docs}

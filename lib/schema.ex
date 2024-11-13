@@ -151,6 +151,14 @@ defmodule Flint.Schema do
 
     quote do
       Ecto.Schema.field(unquote(name), unquote(type), unquote(opts))
+
+      unquote(TypedEctoSchema.TypeBuilder).add_field(
+        __MODULE__,
+        :field,
+        unquote(name),
+        unquote(Macro.escape(type)),
+        unquote(opts ++ extra_options)
+      )
     end
   end
 
@@ -242,6 +250,14 @@ defmodule Flint.Schema do
         unquote(schema),
         unquote(opts) ++ unquote(@embeds_one_defaults)
       )
+
+      unquote(TypedEctoSchema.TypeBuilder).add_field(
+        __MODULE__,
+        :embeds_one,
+        unquote(name),
+        unquote(schema),
+        unquote(opts)
+      )
     end
   end
 
@@ -258,6 +274,14 @@ defmodule Flint.Schema do
         )
 
       Ecto.Schema.__embeds_one__(__MODULE__, unquote(name), schema, opts)
+
+      unquote(TypedEctoSchema.TypeBuilder).add_field(
+        __MODULE__,
+        :embeds_one,
+        unquote(name),
+        schema,
+        opts
+      )
     end
   end
 
@@ -354,6 +378,14 @@ defmodule Flint.Schema do
         unquote(schema),
         unquote(opts) ++ unquote(@embeds_many_defaults)
       )
+
+      unquote(TypedEctoSchema.TypeBuilder).add_field(
+        __MODULE__,
+        :embeds_many,
+        unquote(name),
+        unquote(schema),
+        unquote(opts)
+      )
     end
   end
 
@@ -370,6 +402,14 @@ defmodule Flint.Schema do
         )
 
       Ecto.Schema.__embeds_many__(__MODULE__, unquote(name), schema, opts)
+
+      unquote(TypedEctoSchema.TypeBuilder).add_field(
+        __MODULE__,
+        :embeds_many,
+        unquote(name),
+        schema,
+        opts
+      )
     end
   end
 
@@ -458,7 +498,7 @@ defmodule Flint.Schema do
   @doc """
   Wraps `Ecto`'s `embedded_schema` macro, injecting `Flint`'s custom macro implementation into the module space.
   """
-  defmacro embedded_schema(do: block) do
+  defmacro embedded_schema(opts \\ [], do: block) do
     quote do
       Ecto.Schema.embedded_schema do
         import Ecto.Schema,
@@ -477,8 +517,15 @@ defmodule Flint.Schema do
         import Flint.Schema
         @after_compile Flint.Schema
 
+        require unquote(TypedEctoSchema.TypeBuilder)
+
+        unquote(TypedEctoSchema.TypeBuilder).init(unquote(opts))
+
+        unquote(TypedEctoSchema.TypeBuilder).add_primary_key(__MODULE__)
         unquote(block)
+        unquote(TypedEctoSchema.TypeBuilder).enforce_keys()
         unquote_splicing(Module.get_attribute(__CALLER__.module, :extension_fields, []))
+        unquote(TypedEctoSchema.TypeBuilder).define_type(unquote(opts))
       end
     end
   end
@@ -537,6 +584,7 @@ defmodule Flint.Schema do
         Map.update(__CALLER__, :aliases, [], fn aliases ->
           aliases ++
             [
+              {Typed, Flint.Extensions.Typed},
               {When, Flint.Extensions.When},
               {Accessible, Flint.Extensions.Accessible},
               {EctoValidations, Flint.Extensions.EctoValidations},
@@ -636,7 +684,7 @@ defmodule Flint.Schema do
 
         use Ecto.Schema
         import Ecto.Schema, except: [embedded_schema: 1]
-        import Flint.Schema, only: [embedded_schema: 1]
+        import Flint.Schema, only: [embedded_schema: 1, embedded_schema: 2]
         unquote_splicing(attrs)
       end
 

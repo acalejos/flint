@@ -10,6 +10,7 @@ defmodule Flint do
       do: raise(ArgumentError, "Cannot specify both `:only` and `:except` options.")
 
     defaults = [
+      Flint.Extensions.Typed,
       Flint.Extensions.PreTransforms,
       Flint.Extensions.When,
       Flint.Extensions.EctoValidations,
