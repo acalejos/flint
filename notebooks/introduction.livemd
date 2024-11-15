@@ -1,0 +1,1132 @@
+# Flint Feature Walkthrough
+
+```elixir
+Mix.install(
+  [
+    #{:flint, "~> 0.5"},
+    {:flint, path: "/Users/andres/Documents/flint"},
+    {:typed_ecto_schema, "~> 0.4", runtime: false},
+    {:poison, "~> 6.0"}
+  ],
+  consolidate_protocols: false
+)
+```
+
+## Introduction to Flint
+
+`Flint` is a library that aims to make `Ecto` `embedded_schema`'s more declarative, flexible, and expressive.
+
+One of the core tenets of `Flint` is to be a drop-in replacement for `Ecto`, meaning that for all of your `Ecto` embedded schemas you can just switch from `use Ecto.Schema` to `use Flint.Schema`, and then you have to opt into all of the extra features of `Flint`.
+
+`Flint` aims to empower you to colocate as much information as possible into your `embedded_schema` definitions, but `Flint` core is very unopinionated about how you use that data. `Flint` provides several build in extensions that are opinionated, but fundamentally `Flint` just exposes a way for you to store and retrieve additional data in an `Ecto` `embedded_schema`.
+
+## Core Features
+
+The core features of `Flint` are those not packaged as `Flint` extensions.
+
+All of these features are available even when specifying `extensions: []` when using `Flint.Schema`
+
+* Added `field!`, `embeds_one!`, and `embeds_many!` macros that tag those fields as required and exposes them through the `__schema__(:required)` reflection function.
+* Added support for `do` block in `field` and `field!` to add `validation_condition -> error_message` pairs to the field.
+* Generated functions:
+  * `changeset/3`
+  * `new/2`
+  * `new!/2`
+* Custom implementation of `embedded_schema` that uses the above macros from `Flint.Schema` instead of `Ecto.Schema`.
+* The ability to define aliases for field options
+* Application-wide default options using configurations
+
+Let's explore each of these in more detail
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Using Generated Functions
+
+### `changeset`, `new`, and `new!`
+
+<!-- livebook:{"break_markdown":true} -->
+
+`Flint` provides generated and overridable default implementations of `changeset`, `new`, and `new!` functions.
+
+The `new` and `new!` functions use the `changeset` function.
+
+<!-- livebook:{"break_markdown":true} -->
+
+The generated `changeset` function automatically accounts for the required fields, and now you can use `changeset` as you would any other changeset.
+
+**Many of the built-in extensions (which we will discuss in-depth later) build upon the core `changeset` function to build up a more comprehensive pipeline.**
+
+You can also use the generated `new` and `new!` functions. `new` will create a new struct from the passed params and will apply the changes regardless of validation, as opposed to `new!`, which will `raise` on validation errors, but otherwise will apply any valid changes.
+
+Let's take a look at a more practical example. In this example, we're:
+
+* Using both normal and `!` variants of field declarations
+* Using the shorthand notation where we pass the schema as an option to the `use Flint` call
+* Using both external and inline `embeds` fields.
+* Using an `Ecto.Enum` field type to map values between `embedded` and `dumped` representations.
+
+```elixir
+defmodule Book do
+  use Flint.Schema
+
+  embedded_schema do
+    field!(:title, :string)
+
+    embeds_one! :author, Author_d do
+      field!(:first_name)
+      field!(:last_name)
+      field(:bio, :string)
+    end
+
+    embeds_many(:coauthors, Author_c)
+    field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
+  end
+end
+```
+
+Now when we call `Book.new` it will create a new `Book` struct regardless of validation errors.
+
+**Note that by `embeds_many(!)` fields will default to an empty list (`[]`) at all times, whereas `embeds_one!` defaults to `nil` as it marks the field as `:required`, whereas `embeds_one` defaults to the empty struct (of its embedding). You can control this behavior for `embeds_one` using the `defaults_to_struct` boolean option.**
+
+```elixir
+Book.new()
+```
+
+```elixir
+Book.__schema__(:required)
+```
+
+```elixir
+Book.new!(%{title: "The old man and the sea"})
+```
+
+The generated `changeset` functions will also enfore `:required` validations for embedded fields, so if any required field of the `:author` embedded field is not present, then `Book` will fail validation.
+
+```elixir
+Book.new!(%{
+  title: "Harry Potter",
+  author: %{first_name: "J.K."},
+  genre: :fantasy
+})
+```
+
+```elixir
+book =
+  Book.new!(%{
+    title: "Harry Potter",
+    author: %{first_name: "J.K.", last_name: "Rowling"},
+    genre: :fantasy
+  })
+```
+
+```elixir
+defmodule Book_b do
+  use Flint.Schema
+
+  embedded_schema do
+    field!(:title, :string)
+
+    embeds_one :author, Author_c do
+      field!(:first_name)
+      field!(:last_name)
+      field(:bio, :string)
+    end
+
+    embeds_many(:coauthors, Author_d)
+    field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
+  end
+end
+```
+
+Note the quirk that if the embedded field is not marked as required, but one of its subfields is, then if the embedded struct is partially intialized it will fail if the required subfield is missing
+
+```elixir
+Book_b.new!(%{
+  title: "Harry Potter",
+  author: %{first_name: "J.K."},
+  genre: :fantasy
+})
+```
+
+Whereas if it is not passed altogether then it will pass validation.
+
+```elixir
+Book_b.new!(%{
+  title: "Harry Potter",
+  genre: :fantasy
+})
+```
+
+## Required Fields
+
+```elixir
+defmodule Person do
+  use Flint.Schema, extensions: []
+
+  @primary_key false
+  embedded_schema do
+    field! :first_name, :string
+    field :last_name, :string
+
+    embeds_many! :parents, Parent, primary_key: false do
+      field! :relationship, Ecto.Enum, values: [:mother, :father]
+      field! :first_name, :string
+      field :last_name, :string
+    end
+  end
+end
+```
+
+Now we can use the generated function to create a new `Person` struct
+
+```elixir
+mark_twain = %{
+  first_name: "Mark",
+  last_name: "Twain",
+  parents: [
+    %{
+      first_name: "John",
+      last_name: "Clemens",
+      relationship: :father
+    },
+    %{
+      first_name: "Jane",
+      last_name: "Clemens",
+      relationship: :mother
+    }
+  ]
+}
+
+Person.changeset(%Person{}, mark_twain)
+```
+
+This generates an `Ecto.Changeset`. Let's remove one of the fiels that had been marked as required.
+
+```elixir
+mark_twain_bad = Map.drop(mark_twain, [:first_name])
+Person.changeset(%Person{}, mark_twain_bad)
+```
+
+This time, we get an error in our changeset, since we no longer provided a `first_name`.
+
+You can see this difference in the `new` and `new!` generated functions as well, which will automatically apply the changes from the changeset to produce a struct for the provided schema.
+
+```elixir
+Person.new(mark_twain)
+```
+
+```elixir
+Person.new(mark_twain_bad)
+```
+
+You can see that with `new` we apply the changes regardless of whether there are any errors present in the changeset.
+
+If we want to `raise` if an error is present then we can use `new!` instead.
+
+```elixir
+Person.new!(mark_twain)
+```
+
+```elixir
+Person.new!(mark_twain_bad)
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Block Validations
+
+Block validations can be specified using `do` blocks in `field` and `field!`. These are specified as lists of `error_condition -> error_message` pairs. If the error condition returns `true`, then the corresponding `error_message` will be inserted into the changeset when using the generated `changeset`, `new`, and `new!` functions.
+
+Within these validations, you can pass custom bindings, meaning that you can define these validations with respect to variables only available at runtime.
+
+In addition to any bindings you pass, the calues of the fields themselves will be available as a variable with the same name as the field.
+
+You can also refer to local and imported / aliased function within these validations as well.
+
+```elixir
+defmodule Person do
+  use Flint.Schema, extensions: []
+
+  def starts_with_capital?(""), do: false
+
+  def starts_with_capital?(<<first::utf8, _rest::binary>>) do
+    first in ?A..?Z
+  end
+
+  @primary_key false
+  embedded_schema do
+    field! :first_name, :string do
+      !starts_with_capital?(first_name) -> "Must be capitalized!"
+      String.length(first_name) >= 10 -> "Name too long!"
+    end
+
+    field(:last_name, :string)
+  end
+end
+```
+
+```elixir
+Person.new!(%{first_name: "mark"})
+```
+
+```elixir
+Person.new!(%{first_name: "Mark"})
+```
+
+All error conditions will be checked, so if multiple error conditions are met then you can be sure that they are reflected in the changeset.
+
+```elixir
+Person.new!(%{first_name: "markmarkmark"})
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Extensions
+
+`Flint` is designed to be highly extensible and flexible. The main way to extend `Flint`s functionality is through extensions.
+
+Flint currently offers four ways to extend behavior:
+
+1. Schema-level attributes
+2. Field-level additional options
+3. Default `embedded_schema` definitions
+4. Injected Code
+
+**Note that extensions are inherited by every child embedded schema defined with `embeds_one` / `embeds_many`**
+
+<!-- livebook:{"break_markdown":true} -->
+
+### 1. Schema-Level Attributes
+
+<!-- livebook:{"break_markdown":true} -->
+
+Extension let you define schema-level attributes which can then be reflected upon later. This is a pattern already used in `Ecto` such as with the `@primary_key` atttibute, which can then be retrieved with `__schema__(:primary_key)`. `Flint` simply lets you extend this to any module attribute you want.
+
+However, you can still use this to modify attributes already used by `Ecto`. Let's take a look at the built-in `Embedded` extension, which sets attributes to defaults which make more sense when using an `embedded_schema` rather than a `schema`, as an example.
+
+```elixir
+defmodule Embedded do
+  use Flint.Extension
+
+  attribute :schema_prefix
+  attribute :schema_context
+  attribute :primary_key, default: false
+  attribute :timestamp_opts, default: [type: :naive_datetime]
+end
+
+```
+
+When you use the `Embedded` extension your schema will have these attributes set and can reflect on them.
+
+```elixir
+defmodule ExampleEmbedded do
+  use Flint.Schema, extensions: [Embedded]
+
+  embedded_schema do
+    field :name, :string
+  end
+end
+```
+
+```elixir
+ExampleEmbedded.__schema__(:fields)
+```
+
+Notice that there is no `:id` field defined, which would be set if the `@primary_key` field were not set to `false`.
+
+<!-- livebook:{"break_markdown":true} -->
+
+### 2. Field-Level Additional Options
+
+<!-- livebook:{"break_markdown":true} -->
+
+This built-in`JSON` extension is inspired by how marshalling is done in [Go](https://pkg.go.dev/encoding/json#Marshal), ands regsiters three additional options that can be used to annotate a field. It then uses that option information to define  implementations for `Jason` and `Poison` `Encoder` protocols, depending on which you specify.
+
+You can see from that this uses the `__schema__(:extra_options)` reflection function on the schema, which stores all of the options registered across all extensions.
+
+```elixir
+defmodule JSON do
+  use Flint.Extension
+
+  option :name, required: false, validator: &is_binary/1
+  option :omitempty, required: false, default: false, validator: &is_boolean/1
+  option :ignore, required: false, default: false, validator: &is_boolean/1
+
+  @doc false
+  def encode_to_map(module, struct) do
+    struct
+    |> Ecto.embedded_dump(:json)
+    |> Enum.reduce(%{}, fn {key, val}, acc ->
+      field_opts = get_field_options(module, key)
+      json_key = field_opts[:name] || to_string(key)
+
+      cond do
+        field_opts[:ignore] ->
+          acc
+
+        field_opts[:omitempty] && is_nil(val) ->
+          acc
+
+        true ->
+          Map.put(acc, json_key, val)
+      end
+    end)
+  end
+
+  defp get_field_options(module, field) do
+    module.__schema__(:extra_options)
+    |> Keyword.get(field, [])
+    |> Enum.into(%{})
+  end
+
+  defmacro __using__(opts) do
+    json_module = Keyword.get(opts, :json_module, Jason)
+    protocol = Module.concat([json_module, Encoder])
+
+    quote do
+      if Code.ensure_loaded?(unquote(json_module)) do
+        defimpl unquote(protocol) do
+          def encode(value, opts) do
+            encoded_map = Flint.Extensions.JSON.encode_to_map(unquote(__CALLER__.module), value)
+            unquote(Module.concat([json_module, Encoder, Map])).encode(encoded_map, opts)
+          end
+        end
+      end
+    end
+  end
+end
+
+```
+
+Now let's define a schema with specialized serialization using the `JSON` extension
+
+```elixir
+defmodule ExampleJSON do
+  use Flint.Schema, extensions: [JSON] 
+
+  @primary_key false
+  embedded_schema do
+    field! :first_name, :string, name: "First Name"
+    field :last_name, :string, name: "Last Name", omitempty: true
+    field :nicknames, {:array, :string}, ignore: true
+  end
+end
+```
+
+```elixir
+person =
+  ExampleJSON.new!(%{
+    first_name: "Charles",
+    nicknames: ["Charlie"]
+  })
+```
+
+```elixir
+Jason.encode!(person)
+```
+
+Here, you can see the effects of each of the 3 options:
+
+1. The `:first_name` field is encoded as `"First Name"` as specified with the `:name` option
+2. The `:last_name` field is not encoded at all, since it was empty (`nil`)
+3. The `:nicknames` field is not encoded since it is ignored
+
+<!-- livebook:{"break_markdown":true} -->
+
+You can also pass options to extensions. In this case, we can specify a different JSON library to use if we don't want to use `Jason`, which is the default.
+
+```elixir
+defmodule ExamplePoison do
+  use Flint.Schema, extensions: [{JSON, json_module: Poison}] 
+
+  @primary_key false
+  embedded_schema do
+    field! :first_name, :string, name: "First Name"
+    field :last_name, :string, name: "Last Name", omitempty: true
+    field :nicknames, {:array, :string}, ignore: true
+  end
+end
+```
+
+```elixir
+person =
+  ExamplePoison.new!(%{
+    first_name: "Charles",
+    nicknames: ["Charlie"]
+  })
+Poison.encode!(person)
+```
+
+### 3. Default `embedded_schema` Definitions
+
+<!-- livebook:{"break_markdown":true} -->
+
+Extensions also let you define default `embedded_schema` definitions which will be merged with any schema that uses it.
+
+```elixir
+defmodule Inherited do
+  use Flint.Extension
+
+  attribute(:schema_prefix)
+  attribute(:schema_context)
+  attribute(:primary_key, default: false)
+  attribute(:timestamp_opts, default: [type: :naive_datetime])
+
+  embedded_schema do
+    field!(:timestamp, :utc_datetime_usec)
+    field!(:id)
+
+    embeds_one :child, Child do
+      field(:name, :string)
+      field(:age, :integer)
+    end
+  end
+end
+
+defmodule Schema do
+  use Flint.Schema, extensions: [Inherited]
+
+  embedded_schema do
+    field(:type, :string)
+  end
+end
+```
+
+```elixir
+Schema.__schema__(:fields)
+```
+
+```elixir
+Schema.__schema__(:embeds)
+```
+
+```elixir
+defmodule Person do
+  use Flint.Schema
+
+  embedded_schema do
+    field :first_name
+    field :last_name
+  end
+end
+```
+
+```elixir
+defmodule Event do
+  use Flint.Extension
+
+  embedded_schema do
+    field!(:timestamp, :utc_datetime_usec)
+    field!(:id)
+    embeds_one(:person, Person)
+
+    embeds_one :child, Child do
+      field(:name, :string)
+      field(:age, :integer)
+    end
+  end
+end
+```
+
+```elixir
+defmodule Webhook do
+  use Flint.Schema, extensions: [Event, Embedded]
+
+  embedded_schema do
+    field :route, :string
+    field :name, :string
+  end
+end
+```
+
+```elixir
+Webhook.__schema__(:extensions)
+```
+
+```elixir
+Webhook.__schema__(:fields)
+```
+
+```elixir
+Webhook.__schema__(:embeds)
+```
+
+### 4. Injected Code
+
+<!-- livebook:{"break_markdown":true} -->
+
+Lastly, extensions can define their own `__using__/1` macro that will be called by the schema using the extension.
+
+This is also why the order in which extensions are specified matters, since extensions will be `use`d by the calling schema module in the order that they are specified in the `extensions` option.
+
+Here's an example of the built-in `Accessible` extensions, which implements the `Access` behaviour for the schema.
+
+```elixir
+defmodule Accessible do
+  use Flint.Extension
+
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Access
+
+      @impl true
+      defdelegate fetch(term, key), to: Map
+      @impl true
+      defdelegate get_and_update(term, key, fun), to: Map
+      @impl true
+      defdelegate pop(data, key), to: Map
+    end
+  end
+end
+
+```
+
+```elixir
+defmodule AccessibleSchema do
+  use Flint.Schema, extensions: [Accessible]
+
+  embedded_schema do
+    field :name
+  end
+end
+```
+
+```elixir
+person = AccessibleSchema.new!(%{name: "Mickey"})
+person[:name]
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Custom Types
+
+`Ecto` allows you to define custom types by implementing the [`Ecto.Type`](https://hexdocs.pm/ecto/Ecto.Type.html#module-custom-types-and-primary-keys) or [`Ecto.ParameterizedType`](https://hexdocs.pm/ecto/Ecto.ParameterizedType.html) behaviours.
+
+Types are how you define the way in which data is imported (`cast` / `load`) and exported (`dump`) when using your schema. So when accepting external data, types are what determines how that data is put into and taken out of your struct, which is an important behavior to control when working ingesting external data or outputting your data to an external API.
+
+This is common when using `Ecto` as a means to validate JSON data across programming language barriers.
+
+You might find, however, as you try to write your own types that they can be quite tedious and verbose to implement.
+
+That's where `Flint.Type` comes in!
+
+`Flint.Type` is meant to make writing new `Ecto` types require much less boilerplate, because you can base your
+  type off of an existing type and only modify the callbacks that have different behavior.
+
+Simply `use Flint.Type` and pass the `:extends` option which says which type module to inherit callbacks
+  from.  This will delegate all required callbacks and any implemented optional callbacks and make them
+  overridable.
+
+It also lets you make a type from an `Ecto.ParameterizedType` with default parameter values.
+  You may supply any number of default parameters. This essentially provides a new
+  `init/1` implementation for the type, supplying the default values, while not affecting any of the
+  other `Ecto.ParameterizedType` callbacks. You may still override the newly set defaults at the local level.
+
+Just supply all options that you wish to be defaults as extra options when using `Flint.Type`.
+
+You may override any of the inherited callbacks inherity from the extended module
+  in the case that you wish to customize the module further.
+
+```elixir
+defmodule Category do
+  use Flint.Type, extends: Ecto.Enum, values: [:folder, :file]
+end
+```
+
+This will apply default `values` to `Ecto.Enum` when you supply a `Category` type
+  to an Ecto schema. You may still override the values if you supply the `:values`
+  option for the field.
+
+```elixir
+defmodule Downloads do
+  use Flint.Schema
+
+  embedded_schema do
+    field :type, Category
+  end
+end
+```
+
+```elixir
+Downloads.new!(%{type: :folder})
+```
+
+```elixir
+Downloads.new!(%{type: :another})
+```
+
+This will create a new `NewUID` type that behaves exactly like an `Ecto.UUID` except it dumps
+  its string length.
+
+```elixir
+import Flint.Type
+deftype NewUID, extends: Ecto.UUID, dump: &String.length/1
+
+defmodule TestType do
+  use Flint.Schema
+
+  embedded_schema do
+    field(:id, NewUID)
+  end
+end
+
+Ecto.UUID.generate() |> NewUID.dump()
+```
+
+<!-- livebook:{"branch_parent_index":0} -->
+
+## Default Extensions
+
+You can get a list of the default extensions with `Flint.default_extensions()`.
+
+```elixir
+Flint.default_extensions()
+```
+
+You can optionally provide an `:except` option to filter which extensions to use.
+
+```elixir
+Flint.default_extensions(except: [When])
+```
+
+When explicitly passing which extensions to use, the default extensions are not automatically included, so you can use `Flint.default_extensions` to use them in addition to whatever extensions you explicitly use.
+
+```elixir
+defmodule MySchema do
+  use Flint.Schema, extensions: Flint.default_extensions(except: [JSON, When]) ++ [JSON]
+end
+```
+
+```elixir
+MySchema.__schema__(:extensions)
+```
+
+## Built-In Extensions
+
+`Flint` provides a bevy of built-in extensions (those listed in `Flint.default_extensions`) to provide common conveniences. When building out your own custom `Flint` extensions, you can refer to the implementation details for any of these extensions for reference.
+
+Let's walk through the different extensions:
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Accessible
+
+An extension to automatically implement the `Access` behaviour for your struct,
+deferring to the `Map` implementation.
+
+```elixir
+defmodule AccessibleSchema do
+  use Flint.Schema, extensions: [Accessible]
+
+  embedded_schema do
+    field :name
+    embeds_one :embedded, AccessibleEmbed do
+      field :type
+      field :category
+    end
+  end
+end
+```
+
+```elixir
+a =
+  AccessibleSchema.new!(%{
+    name: "SampleName",
+    embedded: %{type: "SampleType", category: "SampleCategory"}
+  })
+```
+
+```elixir
+a[:name] 
+```
+
+```elixir
+a[:embedded][:category]
+```
+
+### EctoValidations
+
+Shorthand options for common validations found in `Ecto.Changeset`
+
+Just passthrough the option for the appropriate validation and this extension
+  will take care of calling the corresponding function from `Ecto.Changeset` on
+  your data.
+
+#### Options
+
+* `:greater_than` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:less_than` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:less_than_or_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:greater_than_or_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:not_equal_to` ([`Ecto.Changeset.validate_number/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_number/3-options))
+* `:format` ([`Ecto.Changeset.validate_format/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_format/4))
+* `:subset_of` ([`Ecto.Changeset.validate_subset/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_subset/4))
+* `:in` ([`Ecto.Changeset.validate_inlusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_inclusion/4))
+* `:not_in` ([`Ecto.Changeset.validate_exclusion/4`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_exclusion/4))
+* `:is` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:min` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:max` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+* `:count` ([`Ecto.Changeset.validate_length/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_length/3-options))
+
+#### Aliases
+
+By default, the following aliases are also available for convenience:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+config Flint, aliases: [
+  lt: :less_than,
+  gt: :greater_than,
+  le: :less_than_or_equal_to,
+  ge: :greater_than_or_equal_to,
+  eq: :equal_to,
+  ne: :not_equal_to
+]
+```
+
+```elixir
+defmodule EctoValidationsSchema do
+  use Flint.Schema, extensions: [EctoValidations]
+
+  embedded_schema do
+    field! :first_name, :string,  max: 10, min: 5
+    field! :last_name, :string, min: 5, max: 10
+    field :favorite_colors, {:array, :string}, subset_of: ["red", "blue", "green"]
+    field! :age, :integer, greater_than: 0, less_than: max_age
+  end
+end
+```
+
+```elixir
+EctoValidationsSchema.changeset(
+  %EctoValidationsSchema{},
+  %{first_name: "Bob", last_name: "Smith", favorite_colors: ["red", "blue", "pink"], age: 101},
+  max_age: 100
+)
+```
+
+### Embedded
+
+An extension to house common default configurations for embedded schemas. These configurations are specific for
+in-memory schemas.
+
+#### Attributes
+
+The following attributes and defaults are set by this extension:
+
+* `:schema_prefix`
+* `:schema_context`
+* `:primary_key` - defaults to `false`
+* `:timestamp_opts` - defaults to `[type: :naive_datetime]`
+
+A new schema reflection function is made for each attribute:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+__schema__(:schema_context)
+...
+```
+
+```elixir
+defmodule WithoutEmbedded do
+  use Flint.Schema, extensions: []
+
+  embedded_schema do
+    field :name
+  end
+end
+```
+
+```elixir
+WithoutEmbedded.__schema__(:fields)
+```
+
+```elixir
+WithoutEmbedded.__schema__(:primary_key)
+```
+
+```elixir
+defmodule WithEmbedded do
+  use Flint.Schema, extensions: [Embedded]
+
+  embedded_schema do
+    field :name
+  end
+end
+```
+
+```elixir
+WithEmbedded.__schema__(:fields)
+```
+
+```elixir
+WithEmbedded.__schema__(:primary_key)
+```
+
+### JSON
+
+Provides JSON encoding capabilities for Flint schemas with Go-like marshalling options.
+
+This extension enhances Flint schemas with customizable JSON serialization options,
+  allowing fine-grained control over how fields are represented in JSON output.
+
+#### Usage
+
+To use this extension, include it in your Flint schema:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+  defmodule MySchema do
+    use Flint.Schema,
+       extensions: [{JSON, json_module: :json}]  # Jason, or Poison
+       #extensions: [JSON] # (defaults to Jason if no args passed)
+
+    embedded_schema do
+      # Schema fields...
+    end
+  end
+```
+
+#### JSON Encoding Options
+
+The following options can be specified for each field in your schema:
+
+* `:name` - Specifies a custom name for the field in the JSON output.
+* `:omitempty` - When set to `true`, omits the field from JSON output if its value is `nil`.
+* `:ignore` - When set to `true`, always excludes the field from JSON output.
+
+#### Defining Options
+
+Options are defined directly in your schema using the `field` macro:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+  embedded_schema do
+    field :id, :string, name: "ID"
+    field :title, :string, name: "Title", omitempty: true
+    field :internal_data, :map, ignore: true
+  end
+```
+
+```elixir
+defmodule Book do
+  use Flint.Schema,
+    extensions: [Embedded, JSON]
+
+  embedded_schema do
+    field(:id, :string, name: "ISBN")
+    field(:title, :string)
+    field(:author, :string, omitempty: true)
+    field(:price, :decimal, name: "SalePrice")
+    field(:internal_notes, :string, ignore: true)
+  end
+end
+```
+
+```elixir
+book = %{
+  id: "978-3-16-148410-0",
+  title: "Example Book",
+  author: nil,
+  price: Decimal.new("29.99"),
+  internal_notes: "Not for customer eyes"
+}
+
+book |> Book.new!() |> Jason.encode!()
+```
+
+You can even specify an alternate JSON module from `Jason`, such as `Poison`. In reality, this works with any JSON library that uses a protocol with an `encoder` implementation to dispatch its JSON encoding. `Jason` and `Poison` are the only officially supported ones, both having been tested with the current implementation.
+
+You can specify the JSON library like so:
+
+```elixir
+defmodule PoisonBook do
+  use Flint.Schema,
+    extensions: [Embedded, {JSON, json_module: Poison}]
+
+  embedded_schema do
+    field(:id, :string, name: "ISBN")
+    field(:title, :string)
+    field(:author, :string, omitempty: true)
+    field(:price, :decimal, name: "SalePrice")
+    field(:internal_notes, :string, ignore: true)
+  end
+end
+```
+
+```elixir
+book |> PoisonBook.new!() |> Poison.encode!()
+```
+
+### PreTransforms
+
+The `PreTransforms` provides a convenient `:derive` option to express how the field is computed.
+
+**By default, this occurs after casting and before validations.**
+
+`derived` fields let you define expressions with support for custom bindings to include any
+  `field` declarations that occur before the current field.
+
+`:derive` will automatically put the result of the input expression into the field value.
+  By default, this occurs before any other validation, so you can still have access to `field`
+  bindings and even the current computed field value (eg. within a `:when` validation from the
+  `When` extension).
+
+You can define a `derived` field with respect to the field itself, in which case it acts as
+  transformation. Typically in `Ecto`, incoming transformations of this support would happen
+  at the `cast` step, which means the behavior is determined by the type in which you are casting into.
+  `:derive` lets you apply a transformation after casting to change that behavior
+  without changing the underlying allowed type.
+
+You can also define a `derived` field with an expression that does not depend on the field,
+  in which case it is suggested that you use the `field` macro instead of `field!` since any input
+  in that case would be thrashed by the derived value. This means that a field can be completely
+  determined as a product of other fields!
+
+```elixir
+defmodule Test do
+  use Flint.Schema, extensions: [PreTransforms]
+
+  embedded_schema do
+    field!(:category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3])
+    field!(:rating, :integer)
+    field(:score, :integer, derive: rating + category)
+  end
+end
+```
+
+```elixir
+Test.new!(%{category: 1, rating: 80})
+```
+
+### PostTransforms
+
+The `PostTransforms` extension adds the `:map` option to `Flint` schemas.
+
+This works similarly to the `PreTransforms` extension, but uses the `:map` option rather than
+  the `:derive` option used by `PreTransforms`, and by default, applies to the field after all validations.
+
+The same caveats apply to the `:map` expression as all other expressions, with the exception that the
+  `:map` function **only** accepts arity-1 anonymous functions or non-anonymous function expressions
+  (eg. using variable replacement).
+
+In the following example, `:derived` is used to normalize incoming strings to downcase to prepare for
+  the validation, then the output is mapped to the uppercase string using the `:map` option.
+
+```elixir
+defmodule Character do
+  use Flint.Schema
+
+  embedded_schema do
+    field! :type, :string, derive: &String.downcase/1, map: String.upcase(type) do
+      type not in ~w[elf human] -> "Expected elf or human, got: #{type}"
+    end
+
+    field! :age, :integer do
+      age < 0 ->
+        "Nobody can have a negative age"
+
+      type == "elf" and age > max_elf_age ->
+        "Attention! The elf has become a bug! Should be dead already!"
+
+      type == "human" and age > max_human_age ->
+        "Expected human to have up to #{max_human_age}, got: #{age}"
+    end
+  end
+end
+```
+
+```elixir
+max_elf_age = 400
+max_human_age = 120
+Character.new!(%{type: "Elf", age: 10}, binding())
+```
+
+### Typed
+
+Adds supports for **most** of the features from the wonderful [`typed_ecto_schema`](https://github.com/bamorim/typed_ecto_schema) library.
+
+Rather than using the `typed_embedded_schema` macro from that library, however, thr `Typed` extension incorporates the features into the standard
+  `embedded_schema` macro from `Flint.Schema`, meaning even fewer lines of code changed to use typed embedded schemas!
+
+Included with that are the addtional [Schema-Level options](https://hexdocs.pm/typed_ecto_schema/TypedEctoSchema.html#module-schema-options)
+  you can pass to the `embedded_schema` macro.
+
+You also have the ability to [override field typespecs ](https://hexdocs.pm/typed_ecto_schema/TypedEctoSchema.html#module-overriding-the-typespec-for-a-field) as well as providing extra [field-level options](https://hexdocs.pm/typed_ecto_schema/TypedEctoSchema.html#module-extra-options) from
+  `typed_ecto_schema`.
+
+**Note that the typespecs allow you to specify `:enforce` and `:null` options, which are different from the requirement imposed by `field!`. `:enforce` is equal to including that field in the [`@enforce_keys` module attribute](https://hexdocs.pm/elixir/structs.html#default-values-and-required-keys) for the corresponding schema struct. `:null` indicates whether `nil` is a valid value for the field. And `field!` marks the field as being required during the changeset validation, which is equal to passing the field name to the [`Eco.Changeset.validate_required/3`](https://hexdocs.pm/ecto/Ecto.Changeset.html#validate_required/3) function.**
+
+```elixir
+defmodule TypedPerson do
+  use Flint.Schema, extensions: [Typed]
+
+  embedded_schema do
+    field :name, :string, null: false
+    # Notice that you can override a typespec like so
+    field!(:age, :integer) :: non_neg_integer() | nil
+  end
+end
+
+defmodule TypedSchema do
+  use Flint.Schema, extensions: [Typed]
+
+  # The options `:null`, `:enforce`, and `:opaque`
+  embedded_schema null: false, enforce: true do
+    field :first, :string
+    field :name, :string, enforce: false, null: false
+    field :thing, Ecto.Enum, values: [:a, :b, :c], null: false, enforce: false
+    embeds_one :person, Person do 
+      field :first
+      field :last
+    end
+    
+    embeds_one :person2, TypedPerson
+
+    embeds_many :people, TypedPerson
+
+    embeds_many :things, Thing do
+      field :gadget
+    end
+  end
+end
+```
+
+```elixir
+require IEx.Helpers
+IEx.Helpers.t(TypedPerson) 
+IEx.Helpers.t(TypedSchema) 
+```
+
+### When
+
+The `When` extension adds the `:when` option to `Flint` schemas.
+
+`:when` lets you define an arbitrary boolean expression that will be evaluated and pass the validation if it
+  evaluates to a truthy value. You may pass bindings to this condition and
+  refer to previously defined fields. `:when` also lets you refer to the current `field` in which
+  the `:when` condition is defined. Theoretically, you could write many of the other validations using `:when`, but you will
+  receive worse error messages with `:when` than with the dedicated validations.
+
+```elixir
+defmodule WhenTest do
+  use Flint.Schema
+
+  embedded_schema do
+    field!(:category, Union, oneof: [Ecto.Enum, :decimal, :integer], values: [a: 1, b: 2, c: 3])
+    field!(:rating, :integer, when: category == target_category)
+    field!(:score, :integer, gt: 1, lt: 100, when: score > rating)
+  end
+end
+```
+
+```elixir
+WhenTest.new!(%{category: :a, rating: 80, score: 10}, target_category: :a)
+```
+
+<!-- livebook:{"offset":34071,"stamp":{"token":"XCP.TKVKjDHlhUbK3jswYe9VSxBp4OtFT0keLmzBjMjXweA_kxRwdUwAjWcqR_vm9PRLrxMdqKrMxEhpZAVLWYe-QE4fJ0wasB4DDn-Bva57h3gAZBiGg3RY","version":2}} -->

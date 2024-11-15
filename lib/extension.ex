@@ -201,6 +201,7 @@ defmodule Flint.Extension do
 
       defoverridable __using__: 1
 
+      @doc false
       def template_schema() do
         @embedded_schema
       end

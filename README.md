@@ -31,7 +31,9 @@ Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for
 ```elixir
 def deps do
   [
-    {:flint, "~> 0.5"}
+    {:flint, "~> 0.5"},
+    # If you want access to the `Typed` extension to add generated typespecs
+    {:typed_ecto_schema, "~> 0.4", runtime: false}
   ]
 end
 ```

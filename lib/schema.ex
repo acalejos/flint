@@ -5,27 +5,10 @@ defmodule Flint.Schema do
   When you `use Flint`, all of these definitions are imported into the module and override the default
   `Ecto.Schema` implementations. You should not have to directly interact with this module.
   """
-  alias TypedEctoSchema.TypeBuilder
   require Logger
   import Ecto.Changeset
 
-  @schema_function_names [
-    :field,
-    :field!,
-    :embeds_one,
-    :embeds_one!,
-    :embeds_many,
-    :embeds_many!
-  ]
-
   @error_regex ~r"%{(\w+)}"
-
-  @required_with_default_warning """
-  You are setting a default value for a field marked as required (!).
-  Be aware that validating required variables happens after casting,
-  and casting will replace any missing fields with their defaults (if specified).
-  These will never fail the `required` validation.
-  """
 
   @embeds_one_defaults Application.compile_env(:flint, [:embeds_one],
                          defaults_to_struct: true,
@@ -48,6 +31,8 @@ defmodule Flint.Schema do
     ne: :not_equal_to
   ]
   @aliases Application.compile_env(:flint, :aliases, @default_aliases)
+
+  def aliases, do: @aliases
 
   defp make_required(module, name) do
     Module.put_attribute(module, :required, name)
@@ -159,18 +144,8 @@ defmodule Flint.Schema do
       Module.put_attribute(__CALLER__.module, :extra_options, {name, extra_options})
     end
 
-    {_overriden_type, ecto_opts} = Keyword.pop(opts, :__typed_ecto_type__)
-
     quote do
-      Ecto.Schema.field(unquote(name), unquote(type), unquote(ecto_opts))
-
-      unquote(TypedEctoSchema.TypeBuilder).add_field(
-        __MODULE__,
-        :field,
-        unquote(name),
-        unquote(Macro.escape(type)),
-        unquote(opts ++ extra_options)
-      )
+      Ecto.Schema.field(unquote(name), unquote(type), unquote(opts))
     end
   end
 
@@ -208,9 +183,6 @@ defmodule Flint.Schema do
   end
 
   defmacro field!(name, type, opts) do
-    if Keyword.has_key?(opts, :default),
-      do: Logger.warning(@required_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -219,9 +191,6 @@ defmodule Flint.Schema do
   end
 
   defmacro field!(name, type, opts, do: block) do
-    if Keyword.has_key?(opts, :default),
-      do: Logger.warning(@required_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -262,14 +231,6 @@ defmodule Flint.Schema do
         unquote(schema),
         unquote(opts) ++ unquote(@embeds_one_defaults)
       )
-
-      unquote(TypedEctoSchema.TypeBuilder).add_field(
-        __MODULE__,
-        :embeds_one,
-        unquote(name),
-        unquote(schema),
-        unquote(opts)
-      )
     end
   end
 
@@ -286,14 +247,6 @@ defmodule Flint.Schema do
         )
 
       Ecto.Schema.__embeds_one__(__MODULE__, unquote(name), schema, opts)
-
-      unquote(TypedEctoSchema.TypeBuilder).add_field(
-        __MODULE__,
-        :embeds_one,
-        unquote(name),
-        schema,
-        opts
-      )
     end
   end
 
@@ -328,9 +281,6 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_one!(name, schema, opts) do
-    if Keyword.has_key?(opts, :default),
-      do: Logger.warning(@required_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -343,9 +293,6 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_one!(name, schema, opts, do: block) do
-    if Keyword.has_key?(opts, :default),
-      do: Logger.warning(@required_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -390,14 +337,6 @@ defmodule Flint.Schema do
         unquote(schema),
         unquote(opts) ++ unquote(@embeds_many_defaults)
       )
-
-      unquote(TypedEctoSchema.TypeBuilder).add_field(
-        __MODULE__,
-        :embeds_many,
-        unquote(name),
-        unquote(schema),
-        unquote(opts)
-      )
     end
   end
 
@@ -414,14 +353,6 @@ defmodule Flint.Schema do
         )
 
       Ecto.Schema.__embeds_many__(__MODULE__, unquote(name), schema, opts)
-
-      unquote(TypedEctoSchema.TypeBuilder).add_field(
-        __MODULE__,
-        :embeds_many,
-        unquote(name),
-        schema,
-        opts
-      )
     end
   end
 
@@ -456,9 +387,6 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_many!(name, schema, opts) do
-    if Keyword.has_key?(opts, :default),
-      do: Logger.warning(@required_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -471,9 +399,6 @@ defmodule Flint.Schema do
   end
 
   defmacro embeds_many!(name, schema, opts, do: block) do
-    if Keyword.has_key?(opts, :default),
-      do: Logger.warning(@required_with_default_warning)
-
     make_required(__CALLER__.module, name)
 
     quote do
@@ -510,7 +435,7 @@ defmodule Flint.Schema do
   @doc """
   Wraps `Ecto`'s `embedded_schema` macro, injecting `Flint`'s custom macro implementation into the module space.
   """
-  defmacro embedded_schema(opts \\ [], do: block) do
+  defmacro embedded_schema(do: block) do
     quote do
       Ecto.Schema.embedded_schema do
         import Ecto.Schema,
@@ -529,65 +454,21 @@ defmodule Flint.Schema do
         import Flint.Schema
         @after_compile Flint.Schema
 
-        require unquote(TypeBuilder)
-
-        unquote(TypeBuilder).init(unquote(opts))
-
-        unquote(TypeBuilder).add_primary_key(__MODULE__)
-        unquote(apply_to_block(block))
-        unquote(TypeBuilder).enforce_keys()
+        unquote(block)
         unquote_splicing(Module.get_attribute(__CALLER__.module, :extension_fields, []))
-        unquote(TypeBuilder).define_type(unquote(opts))
       end
     end
   end
 
-  defp apply_to_block(block) do
-    calls =
-      case block do
-        {:__block__, _, calls} ->
-          calls
-
-        call ->
-          [call]
-      end
-
-    new_calls = Enum.map(calls, &transform_expression(&1))
-
-    {:__block__, [], new_calls}
-  end
-
-  defp transform_expression({:"::", _, [{function_name, _, [name, ecto_type, opts]}, type]})
-       when function_name in @schema_function_names do
-    transform_expression(
-      {function_name, [], [name, ecto_type, [{:__typed_ecto_type__, Macro.escape(type)} | opts]]}
-    )
-  end
-
-  defp transform_expression({:"::", _, [{function_name, _, [name, ecto_type]}, type]})
-       when function_name in @schema_function_names do
-    transform_expression(
-      {function_name, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
-    )
-  end
-
-  defp transform_expression({:"::", _, [{field, _, [name]}, type]})
-       when field in [:field, :field!] do
-    transform_expression({field, [], [name, :string, [__typed_ecto_type__: Macro.escape(type)]]})
-  end
-
-  defp transform_expression(expr) do
-    expr
-  end
-
   # From https://github.com/elixir-ecto/ecto/blob/1918cdc93d5543c861682fdfb4105a35d21135cc/lib/ecto/schema.ex#L2532
-  defp expand_nested_module_alias({:__aliases__, _, [Elixir, _ | _] = alias}, _env),
+  @doc false
+  def expand_nested_module_alias({:__aliases__, _, [Elixir, _ | _] = alias}, _env),
     do: Module.concat(alias)
 
-  defp expand_nested_module_alias({:__aliases__, _, [h | t]}, env) when is_atom(h),
+  def expand_nested_module_alias({:__aliases__, _, [h | t]}, env) when is_atom(h),
     do: Module.concat([env.module, h | t])
 
-  defp expand_nested_module_alias(other, _env), do: other
+  def expand_nested_module_alias(other, _env), do: other
 
   @doc """
   Creates a new schema struct according to the schema's `changeset` implementation, immediately applying
@@ -632,17 +513,18 @@ defmodule Flint.Schema do
         extensions,
         binding(),
         Map.update(__CALLER__, :aliases, [], fn aliases ->
-          aliases ++
-            [
-              {Typed, Flint.Extensions.Typed},
-              {When, Flint.Extensions.When},
-              {Accessible, Flint.Extensions.Accessible},
-              {EctoValidations, Flint.Extensions.EctoValidations},
-              {Embedded, Flint.Extensions.Embedded},
-              {JSON, Flint.Extensions.JSON},
-              {PreTransforms, Flint.Extensions.PreTransforms},
-              {PostTransforms, Flint.Extensions.PostTransforms}
-            ]
+          (aliases ++
+             [
+               if(Code.ensure_loaded?(TypedEctoSchema), do: {Typed, Flint.Extensions.Typed}),
+               {When, Flint.Extensions.When},
+               {Accessible, Flint.Extensions.Accessible},
+               {EctoValidations, Flint.Extensions.EctoValidations},
+               {Embedded, Flint.Extensions.Embedded},
+               {JSON, Flint.Extensions.JSON},
+               {PreTransforms, Flint.Extensions.PreTransforms},
+               {PostTransforms, Flint.Extensions.PostTransforms}
+             ])
+          |> Enum.filter(& &1)
         end)
       )
 
@@ -734,7 +616,7 @@ defmodule Flint.Schema do
 
         use Ecto.Schema
         import Ecto.Schema, except: [embedded_schema: 1]
-        import Flint.Schema, only: [embedded_schema: 1, embedded_schema: 2]
+        import Flint.Schema, only: [embedded_schema: 1]
         unquote_splicing(attrs)
       end
 

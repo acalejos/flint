@@ -9,16 +9,18 @@ defmodule Flint do
     if opts[:except] && opts[:only],
       do: raise(ArgumentError, "Cannot specify both `:only` and `:except` options.")
 
-    defaults = [
-      Flint.Extensions.Typed,
-      Flint.Extensions.PreTransforms,
-      Flint.Extensions.When,
-      Flint.Extensions.EctoValidations,
-      Flint.Extensions.PostTransforms,
-      Flint.Extensions.Accessible,
-      Flint.Extensions.Embedded,
-      Flint.Extensions.JSON
-    ]
+    defaults =
+      [
+        if(Code.ensure_loaded?(TypedEctoSchema), do: Flint.Extensions.Typed),
+        Flint.Extensions.PreTransforms,
+        Flint.Extensions.When,
+        Flint.Extensions.EctoValidations,
+        Flint.Extensions.PostTransforms,
+        Flint.Extensions.Accessible,
+        Flint.Extensions.Embedded,
+        Flint.Extensions.JSON
+      ]
+      |> Enum.filter(& &1)
 
     cond do
       opts[:only] ->

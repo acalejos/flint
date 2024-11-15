@@ -32,7 +32,7 @@ defmodule Flint.MixProject do
     [
       {:ecto, "~> 3.12"},
       {:spark, "~> 2.2"},
-      {:typed_ecto_schema, "~> 0.4", runtime: false},
+      {:typed_ecto_schema, "~> 0.4", runtime: false, optional: true},
       {:jason, "~> 1.4", optional: true},
       {:poison, "~> 6.0", optional: true},
       {:ex_doc, "~> 0.31.0", only: :docs}
@@ -60,6 +60,7 @@ defmodule Flint.MixProject do
         Types: [Flint.Type, Flint.Types.Union],
         Extensions: [
           Flint.Extension,
+          Flint.Extensions.Typed,
           Flint.Extensions.PreTransforms,
           Flint.Extensions.When,
           Flint.Extensions.EctoValidations,
