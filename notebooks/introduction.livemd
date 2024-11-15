@@ -1129,4 +1129,4 @@ end
 WhenTest.new!(%{category: :a, rating: 80, score: 10}, target_category: :a)
 ```
 
-<!-- livebook:{"offset":34071,"stamp":{"token":"XCP.TKVKjDHlhUbK3jswYe9VSxBp4OtFT0keLmzBjMjXweA_kxRwdUwAjWcqR_vm9PRLrxMdqKrMxEhpZAVLWYe-QE4fJ0wasB4DDn-Bva57h3gAZBiGg3RY","version":2}} -->
+<!-- livebook:{"offset":34071,"stamp":{"token":"XCP.9pZp_4otamg-uCxciOa457lwnkecPvi19lyWnHEeck3Pi8rn10y_CHpGD9o4RuFBwqFhR9IFog_p0Ln4DiBPsy9YzEoyjPH7j_vmrE94ZbX76feChmM1","version":2}} -->

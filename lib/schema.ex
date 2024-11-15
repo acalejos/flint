@@ -32,6 +32,7 @@ defmodule Flint.Schema do
   ]
   @aliases Application.compile_env(:flint, :aliases, @default_aliases)
 
+  @doc false
   def aliases, do: @aliases
 
   defp make_required(module, name) do
