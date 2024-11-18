@@ -27,7 +27,6 @@ The core features of `Flint` are those not packaged as `Flint` extensions.
 All of these features are available even when specifying `extensions: []` when using `Flint.Schema`
 
 * Added `field!`, `embeds_one!`, and `embeds_many!` macros that tag those fields as required and exposes them through the `__schema__(:required)` reflection function.
-* Added support for `do` block in `field` and `field!` to add `validation_condition -> error_message` pairs to the field.
 * Generated functions:
   * `changeset/3`
   * `new/2`
@@ -229,54 +228,6 @@ Person.new!(mark_twain)
 
 ```elixir
 Person.new!(mark_twain_bad)
-```
-
-<!-- livebook:{"branch_parent_index":0} -->
-
-## Block Validations
-
-Block validations can be specified using `do` blocks in `field` and `field!`. These are specified as lists of `error_condition -> error_message` pairs. If the error condition returns `true`, then the corresponding `error_message` will be inserted into the changeset when using the generated `changeset`, `new`, and `new!` functions.
-
-Within these validations, you can pass custom bindings, meaning that you can define these validations with respect to variables only available at runtime.
-
-In addition to any bindings you pass, the calues of the fields themselves will be available as a variable with the same name as the field.
-
-You can also refer to local and imported / aliased function within these validations as well.
-
-```elixir
-defmodule Person do
-  use Flint.Schema, extensions: []
-
-  def starts_with_capital?(""), do: false
-
-  def starts_with_capital?(<<first::utf8, _rest::binary>>) do
-    first in ?A..?Z
-  end
-
-  @primary_key false
-  embedded_schema do
-    field! :first_name, :string do
-      !starts_with_capital?(first_name) -> "Must be capitalized!"
-      String.length(first_name) >= 10 -> "Name too long!"
-    end
-
-    field(:last_name, :string)
-  end
-end
-```
-
-```elixir
-Person.new!(%{first_name: "mark"})
-```
-
-```elixir
-Person.new!(%{first_name: "Mark"})
-```
-
-All error conditions will be checked, so if multiple error conditions are met then you can be sure that they are reflected in the changeset.
-
-```elixir
-Person.new!(%{first_name: "markmarkmark"})
 ```
 
 <!-- livebook:{"branch_parent_index":0} -->
@@ -701,6 +652,8 @@ end
 MySchema.__schema__(:extensions)
 ```
 
+<!-- livebook:{"branch_parent_index":0} -->
+
 ## Built-In Extensions
 
 `Flint` provides a bevy of built-in extensions (those listed in `Flint.default_extensions`) to provide common conveniences. When building out your own custom `Flint` extensions, you can refer to the implementation details for any of these extensions for reference.
@@ -742,6 +695,54 @@ a[:name]
 
 ```elixir
 a[:embedded][:category]
+```
+
+### Block
+
+Adds support for `do` block in `field` and `field!` to add `validation_condition -> error_message` pairs to the field.
+
+Block validations can be specified using `do` blocks in `field` and `field!`. These are specified as lists of `error_condition -> error_message` pairs. If the error condition returns `true`, then the corresponding `error_message` will be inserted into the changeset when using the generated `changeset`, `new`, and `new!` functions.
+
+Within these validations, you can pass custom bindings, meaning that you can define these validations with respect to variables only available at runtime.
+
+In addition to any bindings you pass, the calues of the fields themselves will be available as a variable with the same name as the field.
+
+You can also refer to local and imported / aliased function within these validations as well.
+
+```elixir
+defmodule Person do
+  use Flint.Schema, extensions: [Block]
+
+  def starts_with_capital?(""), do: false
+
+  def starts_with_capital?(<<first::utf8, _rest::binary>>) do
+    first in ?A..?Z
+  end
+
+  @primary_key false
+  embedded_schema do
+    field! :first_name, :string do
+      !starts_with_capital?(first_name) -> "Must be capitalized!"
+      String.length(first_name) >= 10 -> "Name too long!"
+    end
+
+    field(:last_name, :string)
+  end
+end
+```
+
+```elixir
+Person.new!(%{first_name: "mark"})
+```
+
+```elixir
+Person.new!(%{first_name: "Mark"})
+```
+
+All error conditions will be checked, so if multiple error conditions are met then you can be sure that they are reflected in the changeset.
+
+```elixir
+Person.new!(%{first_name: "markmarkmark"})
 ```
 
 ### EctoValidations
@@ -1103,6 +1104,24 @@ IEx.Helpers.t(TypedPerson)
 IEx.Helpers.t(TypedSchema) 
 ```
 
+You can even override types for `field`s with a `:do` block when using the `Block` extension:
+
+```elixir
+defmodule TypedDoSchema do
+  use Flint.Schema, extensions: [Block, Typed, Embedded]
+
+  embedded_schema do
+    field :age, :integer do
+      age < 0 -> "Age must be a non-negative integer!"
+    end :: non_neg_integer()
+  end
+end
+```
+
+```elixir
+IEx.Helpers.t(TypedDoSchema) 
+```
+
 ### When
 
 The `When` extension adds the `:when` option to `Flint` schemas.
@@ -1129,4 +1148,4 @@ end
 WhenTest.new!(%{category: :a, rating: 80, score: 10}, target_category: :a)
 ```
 
-<!-- livebook:{"offset":34071,"stamp":{"token":"XCP.9pZp_4otamg-uCxciOa457lwnkecPvi19lyWnHEeck3Pi8rn10y_CHpGD9o4RuFBwqFhR9IFog_p0Ln4DiBPsy9YzEoyjPH7j_vmrE94ZbX76feChmM1","version":2}} -->
+<!-- livebook:{"offset":34446,"stamp":{"token":"XCP.q0EP-UJBBFjLEHwALSE4DVyY42HeUDVziMQxVi8HfWFBb_1YbZgsIAcRS4lWtsqqpJi1QbUCXyE1-gQxUpMiOK7SSaF-ATradrswt7aWLkMUCzA-6LD4","version":2}} -->

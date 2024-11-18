@@ -19,7 +19,7 @@ defmodule Flint.Type do
 
   ## Examples
 
-  ``` elixir
+  ```elixir
   defmodule Category do
     use Flint.Type, extends: Ecto.Enum, values: [:folder, :file]
   end

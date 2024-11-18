@@ -11,6 +11,7 @@ defmodule Flint do
 
     defaults =
       [
+        Flint.Extensions.Block,
         if(Code.ensure_loaded?(TypedEctoSchema), do: Flint.Extensions.Typed),
         Flint.Extensions.PreTransforms,
         Flint.Extensions.When,

@@ -20,7 +20,6 @@ defmodule Flint.Schema do
                             )
   @embeds_many_defaults Application.compile_env(:flint, [:embeds_many], on_replace: :delete)
   @embeds_many_bang_defaults Application.compile_env(:flint, [:embeds_many!], on_replace: :delete)
-  @enum_defaults Application.compile_env(:flint, [:enum], embed_as: :dumped)
 
   @default_aliases [
     lt: :less_than,
@@ -56,29 +55,7 @@ defmodule Flint.Schema do
   """
   defmacro field(name, type \\ :string, opts \\ [])
 
-  defmacro field(name, type, do: block) when is_list(block) do
-    quote do
-      field(unquote(name), unquote(type), [], do: unquote(block))
-    end
-  end
-
-  defmacro field(_name, _type, do: _block),
-    do:
-      raise(
-        ArgumentError,
-        "Bad expression in `field do:`. All clauses should be of the format `condition` -> `Error Message`"
-      )
-
   defmacro field(name, type, opts) do
-    opts =
-      case type do
-        {_, _, [:Ecto, :Enum]} ->
-          opts ++ @enum_defaults
-
-        _ ->
-          opts
-      end
-
     extension_opts =
       Module.get_attribute(__CALLER__.module, :extension_options, [])
 
@@ -150,25 +127,6 @@ defmodule Flint.Schema do
     end
   end
 
-  defmacro field(name, type, opts, do: block) do
-    block =
-      block
-      |> Enum.map(fn
-        {:->, _, [[left], right]} ->
-          {left, right}
-
-        _ ->
-          raise ArgumentError,
-                "Bad expression in `field do:`. All clauses should be of the format `condition` -> `Error Message`"
-      end)
-
-    opts = [{:block, block} | opts]
-
-    quote do
-      field(unquote(name), unquote(type), unquote(opts))
-    end
-  end
-
   @doc """
   Marks a field as required by storing metadata in a module attribute, then calls `Flint.Schema.field`.
 
@@ -177,25 +135,11 @@ defmodule Flint.Schema do
   """
   defmacro field!(name, type \\ :string, opts \\ [])
 
-  defmacro field!(name, type, do: block) do
-    quote do
-      field!(unquote(name), unquote(type), [], do: unquote(block))
-    end
-  end
-
   defmacro field!(name, type, opts) do
     make_required(__CALLER__.module, name)
 
     quote do
       field(unquote(name), unquote(type), unquote(opts))
-    end
-  end
-
-  defmacro field!(name, type, opts, do: block) do
-    make_required(__CALLER__.module, name)
-
-    quote do
-      field(unquote(name), unquote(type), unquote(opts), do: unquote(block))
     end
   end
 
@@ -516,6 +460,7 @@ defmodule Flint.Schema do
         Map.update(__CALLER__, :aliases, [], fn aliases ->
           (aliases ++
              [
+               {Block, Flint.Extensions.Block},
                if(Code.ensure_loaded?(TypedEctoSchema), do: {Typed, Flint.Extensions.Typed}),
                {When, Flint.Extensions.When},
                {Accessible, Flint.Extensions.Accessible},
@@ -571,12 +516,24 @@ defmodule Flint.Schema do
     Module.put_attribute(__CALLER__.module, :extension_fields, extension_schemas)
 
     attrs =
-      Enum.map(attributes, fn {_extension, field} = attr ->
+      Enum.map(attributes, fn {extension, %{name: name, default: default, validator: validator}} =
+                                attr ->
         Module.put_attribute(__CALLER__.module, :extension_attributes, attr)
 
-        if not is_nil(field.default) do
+        if not is_nil(default) do
+          if validator && not validator.(default),
+            do:
+              raise(
+                ArgumentError,
+                "Default value #{inspect(default)} for attribute #{inspect(name)} registered for extension #{inspect(extension)} failed validation."
+              )
+
           quote do
-            Module.put_attribute(__MODULE__, unquote(field.name), unquote(field.default))
+            Module.put_attribute(
+              __MODULE__,
+              unquote(name),
+              unquote(Macro.escape(default))
+            )
           end
         end
       end)
@@ -660,10 +617,15 @@ defmodule Flint.Schema do
       Module.get_attribute(__CALLER__.module, :extension_attributes, [])
 
     attrs_reflections =
-      Enum.map(attrs, fn {extension, %Flint.Extension.Field{name: name, validator: validator}} ->
+      Enum.map(attrs, fn {extension,
+                          %Flint.Extension.Field{
+                            name: name,
+                            validator: validator,
+                            default: default
+                          }} ->
         attr_val = Module.get_attribute(__CALLER__.module, name)
 
-        if validator && not validator.(attr_val),
+        if validator && not validator.(attr_val) && attr_val != default,
           do:
             raise(
               ArgumentError,

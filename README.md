@@ -31,7 +31,7 @@ Declarative [`Ecto`](https://github.com/elixir-ecto/ecto) `embedded_schema`s for
 ```elixir
 def deps do
   [
-    {:flint, "~> 0.5"},
+    {:flint, "~> 0.6"},
     # If you want access to the `Typed` extension to add generated typespecs
     {:typed_ecto_schema, "~> 0.4", runtime: false}
   ]
@@ -351,7 +351,6 @@ You can configure the default options set by `Flint`.
 * `embeds_one!`: The default arguments when using `embeds_one!`. Defaults to `[on_replace: :delete]`
 * `embeds_many`: The default arguments when using `embeds_many` or `embeds_many!`. Defaults to `[on_replace: :delete]`
 * `embeds_many!`: The default arguments when using `embeds_many!`. Defaults to `[on_replace: :delete]`
-* `:enum`: The default arguments for an `Ecto.Enum` field. Defaults to `[embed_as: :dumped]`.
 * `:aliases`: [Aliases](#aliases)
 
 You can also configure any aliases you want to use for schema validations.
@@ -360,13 +359,13 @@ You can also configure any aliases you want to use for schema validations.
 
 `Flint` takes advantage of the distinction `Ecto` makes between an `embedded_schema`'s embedded and dumped representations.
 
-For example, by default in `Flint`, `Ecto.Enum`s that are `Keyword` (rather than just lists of atoms) will have their keys
+For example, `Flint` provides the `Flint.Types.Enum` type, which are `Ecto.Enum`s where, when given values that are `Keyword` (rather than just lists of atoms) will have their keys
 be the embedded representation and will have the values be the dumped representation.
 
 ```elixir
 defmodule Book do
   use Flint.Schema, schema: [
-    field(:genre, Ecto.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
+    field(:genre, Flint.Types.Enum, values: [biography: 0, science_fiction: 1, fantasy: 2, mystery: 3])
   ]
 end
 
