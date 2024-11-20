@@ -509,6 +509,7 @@ defmodule Flint.Schema do
     Module.register_attribute(__CALLER__.module, :required, accumulate: true)
     Module.register_attribute(__CALLER__.module, :blocks, accumulate: true)
     # Extension-Related Attributes
+    Module.register_attribute(__CALLER__.module, :__embedded_schema_super__, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extension_attributes, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extension_options, accumulate: true)
     Module.register_attribute(__CALLER__.module, :extra_options, accumulate: true)

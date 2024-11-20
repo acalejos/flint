@@ -57,9 +57,10 @@ defmodule Flint.MixProject do
         Notebooks: ~r"notebooks/.*\.(md|livemd)"
       ],
       groups_for_modules: [
-        Types: [Flint.Type, Flint.Types.Union],
+        Types: [Flint.Type, Flint.Types.Enum, Flint.Types.Union],
         Extensions: [
           Flint.Extension,
+          Flint.Extensions.Block,
           Flint.Extensions.Typed,
           Flint.Extensions.PreTransforms,
           Flint.Extensions.When,

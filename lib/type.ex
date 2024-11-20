@@ -71,7 +71,7 @@ defmodule Flint.Type do
     {impls, opts} =
       Keyword.split(
         opts,
-        Keyword.keys(apply(module_for_type(type), :behaviour_info, [:callbacks]))
+        Keyword.keys(module_for_type(type).behaviour_info(:callbacks))
       )
 
     if type != Ecto.ParameterizedType && opts != [] do
@@ -87,8 +87,7 @@ defmodule Flint.Type do
       required_callbacks(module_for_type(type))
 
     callbacks =
-      module_for_type(type)
-      |> apply(:behaviour_info, [:callbacks])
+      module_for_type(type).behaviour_info(:callbacks)
       |> Keyword.drop([:init])
       |> Enum.map(fn {name, arity} ->
         cond do
@@ -187,8 +186,8 @@ defmodule Flint.Type do
   end
 
   defp required_callbacks(module) do
-    all_callbacks = apply(module, :behaviour_info, [:callbacks])
-    optional_callbacks = apply(module, :behaviour_info, [:optional_callbacks])
+    all_callbacks = module.behaviour_info(:callbacks)
+    optional_callbacks = module.behaviour_info(:optional_callbacks)
     Keyword.drop(all_callbacks, Keyword.keys(optional_callbacks))
   end
 

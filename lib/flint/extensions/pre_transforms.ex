@@ -53,7 +53,8 @@ defmodule Flint.Extensions.PreTransforms do
 
   Accepts optional bindings which are passed to evaluated code.
   """
-  def apply_pre_transforms(changeset, bindings \\ []) do
+  @impl true
+  def changeset(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
 
@@ -92,21 +93,6 @@ defmodule Flint.Extensions.PreTransforms do
         else
           changeset
         end
-    end
-  end
-
-  defmacro __using__(_opts) do
-    quote do
-      def changeset(schema, params \\ %{}, bindings \\ []) do
-        changeset =
-          super(schema, params, bindings)
-
-        Flint.Extensions.PreTransforms.apply_pre_transforms(changeset, bindings)
-      end
-
-      defoverridable changeset: 1,
-                     changeset: 2,
-                     changeset: 3
     end
   end
 end

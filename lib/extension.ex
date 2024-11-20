@@ -161,6 +161,8 @@ defmodule Flint.Extension do
 
   By default, `Flint` will enable the following extensions:
 
+  *  `Flint.Extensions.Block`
+  *  `Flint.Extensions.Typed`
   *  `Flint.Extensions.PreTransforms`,
   *  `Flint.Extensions.When`,
   *  `Flint.Extensions.EctoValidations`,
@@ -177,6 +179,9 @@ defmodule Flint.Extension do
     many_extension_kinds: [:extensions],
     default_extensions: [extensions: Flint.Extension.Dsl]
 
+  @callback changeset(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  @callback changeset(Ecto.Changeset.t(), keyword()) :: Ecto.Changeset.t()
+
   @doc false
   defmacro embedded_schema(do: {:__block__, _, contents}) do
     Module.put_attribute(__CALLER__.module, :embedded_schema, contents)
@@ -187,12 +192,40 @@ defmodule Flint.Extension do
     Module.put_attribute(__CALLER__.module, :embedded_schema, [block])
   end
 
+  @doc false
+  def __embedded_schema__(env, extension) do
+    mods =
+      env.macros
+      |> Enum.find_value(
+        fn {_mod, exports} -> Keyword.has_key?(exports, :embedded_schema) end,
+        fn {mod, exports} ->
+          {mod, Keyword.take(exports, [:embedded_schema])}
+        end
+      )
+
+    Module.put_attribute(env.module, :__embedded_schema_super__, {extension, mods})
+
+    mods
+  end
+
+  @doc false
+  def __context__(env, extension) do
+    Module.get_attribute(env.module, :__embedded_schema_super__)
+    |> Keyword.fetch!(extension)
+  end
+
   defmacro __using__(opts) do
     Module.put_attribute(__CALLER__.module, :embedded_schema, [])
 
     quote do
       import Flint.Extension
+      @behaviour Flint.Extension
       unquote_splicing(super(opts))
+
+      @impl true
+      def changeset(changeset, bindings \\ []) do
+        changeset
+      end
 
       defmacro __using__(opts) do
         quote do
@@ -200,6 +233,7 @@ defmodule Flint.Extension do
       end
 
       defoverridable __using__: 1
+      defoverridable Flint.Extension
 
       @doc false
       def template_schema() do

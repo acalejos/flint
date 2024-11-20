@@ -12,7 +12,7 @@ defmodule Flint.Extensions.Block do
   """
   use Flint.Extension
 
-  option :do
+  option :__block__
 
   @doc """
   Uses the quoted expressions from the `Flint.Schema.field` and `Flint.Schema.field!`
@@ -20,7 +20,8 @@ defmodule Flint.Extensions.Block do
 
   You can optionally pass bindings to be added to the evaluation context.
   """
-  def validate_do_blocks(changeset, bindings \\ []) do
+  @impl true
+  def changeset(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
 
@@ -30,7 +31,7 @@ defmodule Flint.Extensions.Block do
 
     for {field, block} <- all_validations, reduce: changeset do
       changeset ->
-        block = Keyword.get(block, :do) || []
+        block = Keyword.get(block, :__block__) || []
         bindings = bindings ++ Enum.into(changeset.changes, [])
 
         block
@@ -87,18 +88,67 @@ defmodule Flint.Extensions.Block do
     end
   end
 
-  defmacro __using__(_opts) do
+  defmacro field(name, type, do: block) when is_list(block) do
     quote do
-      def changeset(schema, params \\ %{}, bindings \\ []) do
-        changeset =
-          super(schema, params, bindings)
+      field(unquote(name), unquote(type), [], do: unquote(block))
+    end
+  end
 
-        Flint.Extensions.Block.validate_do_blocks(changeset, bindings)
+  defmacro field(name, type, opts) do
+    quote do
+      Flint.Schema.field(unquote(name), unquote(type), unquote(opts))
+    end
+  end
+
+  defmacro field(name, type, opts, do: block) do
+    opts = [{:__block__, block} | opts]
+
+    quote do
+      Flint.Schema.field(unquote(name), unquote(type), unquote(opts))
+    end
+  end
+
+  defmacro field!(name, type, do: block) do
+    quote do
+      field!(unquote(name), unquote(type), [], do: unquote(block))
+    end
+  end
+
+  defmacro field!(name, type, opts) do
+    quote do
+      Flint.Schema.field!(unquote(name), unquote(type), unquote(opts))
+    end
+  end
+
+  defmacro field!(name, type, opts, do: block) do
+    # make_required(__CALLER__.module, name)
+    opts = [{:__block__, block} | opts]
+
+    quote do
+      Flint.Schema.field!(unquote(name), unquote(type), unquote(opts))
+    end
+  end
+
+  defmacro embedded_schema(do: block) do
+    {mod, _macros} = Flint.Extension.__context__(__CALLER__, __MODULE__)
+
+    quote do
+      unquote(mod).embedded_schema do
+        import unquote(mod),
+          except: [field: 3, field!: 3]
+
+        import unquote(__MODULE__), only: [field!: 3, field!: 4, field: 3, field: 4]
+        unquote(block)
       end
+    end
+  end
 
-      defoverridable changeset: 1,
-                     changeset: 2,
-                     changeset: 3
+  defmacro __using__(_opts) do
+    {mod, macros} = Flint.Extension.__embedded_schema__(__CALLER__, __MODULE__)
+
+    quote do
+      import unquote(mod), except: unquote(macros)
+      import unquote(__MODULE__), only: [embedded_schema: 1]
     end
   end
 end

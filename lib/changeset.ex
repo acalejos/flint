@@ -43,7 +43,19 @@ defmodule Flint.Changeset do
           )
       end
 
+    extension_names =
+      module.__schema__(:extensions)
+      |> Enum.map(fn
+        {ext, _opts} when is_atom(ext) -> ext
+        ext when is_atom(ext) -> ext
+      end)
+
     changeset
     |> Ecto.Changeset.validate_required(required_fields)
+    |> then(
+      &Enum.reduce(extension_names, &1, fn extension, chst ->
+        extension.changeset(chst, bindings)
+      end)
+    )
   end
 end

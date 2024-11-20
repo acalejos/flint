@@ -110,7 +110,8 @@ defmodule Flint.Extensions.EctoValidations do
 
   See the `Field Validations` section of the README for more information on validation details.
   """
-  def apply_validations(changeset, bindings \\ []) do
+  @impl true
+  def changeset(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
 
@@ -175,21 +176,6 @@ defmodule Flint.Extensions.EctoValidations do
           {func, arg}, chngset ->
             apply(Ecto.Changeset, func, [chngset, field, arg])
         end)
-    end
-  end
-
-  defmacro __using__(_opts) do
-    quote do
-      def changeset(schema, params \\ %{}, bindings \\ []) do
-        changeset =
-          super(schema, params, bindings)
-
-        Flint.Extensions.EctoValidations.apply_validations(changeset, bindings)
-      end
-
-      defoverridable changeset: 1,
-                     changeset: 2,
-                     changeset: 3
     end
   end
 end

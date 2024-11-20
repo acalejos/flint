@@ -38,7 +38,8 @@ defmodule Flint.Extensions.When do
 
   option :when
 
-  def validate_when_condition(changeset, bindings \\ []) do
+  @impl true
+  def changeset(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
 
@@ -72,21 +73,6 @@ defmodule Flint.Extensions.When do
         else
           changeset
         end
-    end
-  end
-
-  defmacro __using__(_opts) do
-    quote do
-      def changeset(schema, params \\ %{}, bindings \\ []) do
-        changeset =
-          super(schema, params, bindings)
-
-        Flint.Extensions.When.validate_when_condition(changeset, bindings)
-      end
-
-      defoverridable changeset: 1,
-                     changeset: 2,
-                     changeset: 3
     end
   end
 end

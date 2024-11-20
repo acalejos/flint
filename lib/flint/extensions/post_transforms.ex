@@ -57,7 +57,8 @@ defmodule Flint.Extensions.PostTransforms do
 
   Accepts optional bindings which are passed to evaluated code.
   """
-  def apply_post_transforms(changeset, bindings \\ []) do
+  @impl true
+  def changeset(changeset, bindings \\ []) do
     module = changeset.data.__struct__
     env = Module.concat(module, Env) |> apply(:env, [])
 
@@ -94,21 +95,6 @@ defmodule Flint.Extensions.PostTransforms do
 
           put_change(changeset, field, mapped)
         end
-    end
-  end
-
-  defmacro __using__(_opts) do
-    quote do
-      def changeset(schema, params \\ %{}, bindings \\ []) do
-        changeset =
-          super(schema, params, bindings)
-
-        Flint.Extensions.PostTransforms.apply_post_transforms(changeset, bindings)
-      end
-
-      defoverridable changeset: 1,
-                     changeset: 2,
-                     changeset: 3
     end
   end
 end

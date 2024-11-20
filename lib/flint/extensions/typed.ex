@@ -31,9 +31,6 @@ if Code.ensure_loaded?(TypedEctoSchema) || Mix.env() == :docs do
     use Flint.Extension
     alias TypedEctoSchema.TypeBuilder
 
-    option :enforce, required: false, validator: &is_boolean/1
-    option :null, default: true, required: false, validator: &is_boolean/1
-
     @schema_function_names [
       :field,
       :field!,
@@ -46,25 +43,10 @@ if Code.ensure_loaded?(TypedEctoSchema) || Mix.env() == :docs do
     @embeds_function_names [:embeds_one, :embeds_many, :embeds_many!, :embeds_one!]
 
     defmacro embedded_schema(opts \\ [], do: block) do
+      {mod, _macros} = Flint.Extension.__context__(__CALLER__, __MODULE__)
+
       quote do
-        Ecto.Schema.embedded_schema do
-          import Ecto.Schema,
-            except: [
-              embeds_one: 2,
-              embeds_one: 3,
-              embeds_one: 4,
-              embeds_many: 2,
-              embeds_many: 3,
-              embeds_many: 4,
-              field: 1,
-              field: 2,
-              field: 3
-            ]
-
-          import Flint.Schema
-
-          @after_compile Flint.Schema
-
+        unquote(mod).embedded_schema do
           require unquote(TypeBuilder)
 
           unquote(TypeBuilder).init(unquote(opts))
@@ -72,7 +54,6 @@ if Code.ensure_loaded?(TypedEctoSchema) || Mix.env() == :docs do
           unquote(TypeBuilder).add_primary_key(__MODULE__)
           unquote(apply_to_block(block, __CALLER__))
           unquote(TypeBuilder).enforce_keys()
-          unquote_splicing(Module.get_attribute(__CALLER__.module, :extension_fields, []))
           unquote(TypeBuilder).define_type(unquote(opts))
         end
       end
@@ -221,9 +202,11 @@ if Code.ensure_loaded?(TypedEctoSchema) || Mix.env() == :docs do
     end
 
     defmacro __using__(_opts) do
+      {mod, macros} = Flint.Extension.__embedded_schema__(__CALLER__, __MODULE__)
+
       quote do
-        import Flint.Schema, except: [embedded_schema: 1]
-        import Flint.Extensions.Typed, only: [embedded_schema: 1, embedded_schema: 2]
+        import unquote(mod), except: unquote(macros)
+        import unquote(__MODULE__), only: [embedded_schema: 1, embedded_schema: 2]
       end
     end
   end

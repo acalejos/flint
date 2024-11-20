@@ -3,8 +3,7 @@
 ```elixir
 Mix.install(
   [
-    #{:flint, "~> 0.5"},
-    {:flint, path: "/Users/andres/Documents/flint"},
+    {:flint, "~> 0.6"},
     {:typed_ecto_schema, "~> 0.4", runtime: false},
     {:poison, "~> 6.0"}
   ],
@@ -1148,4 +1147,4 @@ end
 WhenTest.new!(%{category: :a, rating: 80, score: 10}, target_category: :a)
 ```
 
-<!-- livebook:{"offset":34446,"stamp":{"token":"XCP.q0EP-UJBBFjLEHwALSE4DVyY42HeUDVziMQxVi8HfWFBb_1YbZgsIAcRS4lWtsqqpJi1QbUCXyE1-gQxUpMiOK7SSaF-ATradrswt7aWLkMUCzA-6LD4","version":2}} -->
+<!-- livebook:{"offset":34392,"stamp":{"token":"XCP.vWoUv5_vfpTUmICHLNNh6ELNRocXwR3YUYwSwNQKcAJMrQzFL8n3kSrxdrYyqcictu4K0pMftTmNzed6LksfwsYaOoAOdqMIP4FQ3SwQhGGb8IfI5w7a","version":2}} -->
