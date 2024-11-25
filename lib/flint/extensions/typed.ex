@@ -136,6 +136,18 @@ if Code.ensure_loaded?(TypedEctoSchema) || Mix.env() == :docs do
          when function_name in @embeds_function_names do
       schema = Flint.Schema.expand_nested_module_alias(schema, env)
 
+      normalized_function_name =
+        case function_name do
+          :embeds_many! ->
+            :embeds_many
+
+          :embeds_one! ->
+            :embeds_one
+
+          other ->
+            other
+        end
+
       quote do
         {schema, opts} =
           Flint.Schema.__embeds_module__(
@@ -149,7 +161,7 @@ if Code.ensure_loaded?(TypedEctoSchema) || Mix.env() == :docs do
 
         unquote(TypeBuilder).add_field(
           __MODULE__,
-          unquote(function_name),
+          unquote(normalized_function_name),
           unquote(name),
           schema,
           unquote(opts)

@@ -33,16 +33,6 @@ defmodule Flint.Changeset do
       schema
       |> Ecto.Changeset.cast(params, fields |> MapSet.to_list())
 
-    changeset =
-      for field <- embedded_fields, reduce: changeset do
-        changeset ->
-          changeset
-          |> Ecto.Changeset.cast_embed(field,
-            required: field in required_embeds,
-            with: &changeset(&1, &2, bindings)
-          )
-      end
-
     extension_names =
       module.__schema__(:extensions)
       |> Enum.map(fn
@@ -50,12 +40,35 @@ defmodule Flint.Changeset do
         ext when is_atom(ext) -> ext
       end)
 
-    changeset
-    |> Ecto.Changeset.validate_required(required_fields)
-    |> then(
-      &Enum.reduce(extension_names, &1, fn extension, chst ->
-        extension.changeset(chst, bindings)
-      end)
-    )
+    changeset =
+      changeset
+      |> Ecto.Changeset.validate_required(required_fields)
+      |> then(
+        &Enum.reduce(extension_names, &1, fn extension, chst ->
+          extension.changeset(chst, bindings)
+        end)
+      )
+
+    Enum.reduce(embedded_fields, changeset, fn field, chst ->
+      Ecto.Changeset.cast_embed(chst, field,
+        required: field in required_embeds,
+        with: &changeset(&1, &2, bindings ++ to_bindings(chst))
+      )
+    end)
+  end
+
+  def to_bindings(%Ecto.Changeset{} = chngst) do
+    for {field, chng} <- chngst.changes do
+      case chng do
+        %Ecto.Changeset{} ->
+          {field, to_bindings(chng)}
+
+        array when is_list(array) ->
+          {field, Enum.map(array, &to_bindings/1)}
+
+        _ ->
+          {field, chng}
+      end
+    end
   end
 end
