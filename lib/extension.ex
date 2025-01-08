@@ -182,6 +182,27 @@ defmodule Flint.Extension do
   @callback changeset(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   @callback changeset(Ecto.Changeset.t(), keyword()) :: Ecto.Changeset.t()
 
+  def eval_quoted(quoted, binding \\ [], env_or_opts \\ []) do
+    {:ok, capture_pid} = StringIO.open("")
+    original_group_leader = Process.group_leader()
+
+    try do
+      Process.group_leader(self(), capture_pid)
+
+      {:ok,
+       Code.eval_quoted(
+         quoted,
+         binding,
+         env_or_opts
+       )}
+    rescue
+      _ ->
+        :error
+    after
+      Process.group_leader(self(), original_group_leader)
+    end
+  end
+
   @doc false
   defmacro embedded_schema(do: {:__block__, _, contents}) do
     Module.put_attribute(__CALLER__.module, :embedded_schema, contents)

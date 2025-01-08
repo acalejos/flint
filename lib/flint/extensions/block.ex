@@ -2,7 +2,18 @@ defmodule Flint.Extensions.Block do
   @moduledoc """
   Adds support for `do` block in `field` and `field!` to add `validation_condition -> error_message` pairs to the field.
 
-  Block validations can be specified using `do` blocks in `field` and `field!`. These are specified as lists of `error_condition -> error_message` pairs. If the error condition returns `true`, then the corresponding `error_message` will be inserted into the changeset when using the generated `changeset`, `new`, and `new!` functions.
+  Block validations can be specified using `do` blocks in `field` and `field!`. These are specified as lists of
+  `error_condition -> evaluation` pairs. If the error condition returns `true`, then the corresponding expression will
+  be evaluated. That expression must return one of the following:
+
+  * `:ok`
+  * `nil`
+  * `{:error, reason}`
+  * `:error`
+  * `reason` when `reason` is a binary
+
+  The first two results are considered `pass` results, while the last three are considered `fail` results, where the `reason`
+  will be inserted as an error in the changeset when using the generated `changeset`, `new`, and `new!` functions.
 
   Within these validations, you can pass custom bindings, meaning that you can define these validations with respect to variables only available at runtime.
 
@@ -37,40 +48,66 @@ defmodule Flint.Extensions.Block do
         block
         |> Enum.with_index()
         |> Enum.reduce(changeset, fn
-          {{:->, _, [[quoted_condition], quoted_err]}, index}, chngset ->
-            try do
-              {invalid?, _bindings} =
-                Code.eval_quoted(quoted_condition, bindings, env)
+          {{:->, _, [[quoted_condition], expression]}, index}, chngset ->
+            case eval_quoted(quoted_condition, bindings, env) do
+              {:ok, {continue?, _bindings}} ->
+                continue? =
+                  if is_function(continue?) do
+                    case Function.info(continue?, :arity) do
+                      {:arity, 0} ->
+                        apply(continue?, [])
 
-              invalid? =
-                if is_function(invalid?) do
-                  case Function.info(invalid?, :arity) do
-                    {:arity, 0} ->
-                      apply(invalid?, [])
+                      {:arity, 1} when not is_nil(field) ->
+                        apply(continue?, [Ecto.Changeset.fetch_change!(changeset, field)])
 
-                    {:arity, 1} when not is_nil(field) ->
-                      apply(invalid?, [Ecto.Changeset.fetch_change!(changeset, field)])
+                      _ ->
+                        raise ArgumentError,
+                              "Anonymous functions in validation clause must be either 0-arity or an input value for the field must be provided."
+                    end
+                  else
+                    continue?
+                  end
+
+                if continue? do
+                  case eval_quoted(expression, bindings, env) do
+                    {:ok, {good, _bindings}} when good in [:ok, nil] ->
+                      changeset
+
+                    {:ok, {<<err_msg::binary>>, _bindings}} ->
+                      Ecto.Changeset.add_error(chngset, field, err_msg,
+                        validation: :block,
+                        clause: index + 1
+                      )
+
+                    {:ok, {{:error, err_msg}, _bindings}} ->
+                      Ecto.Changeset.add_error(chngset, field, err_msg,
+                        validation: :block,
+                        clause: index + 1
+                      )
+
+                    {:ok, {:error, _bindings}} ->
+                      Ecto.Changeset.add_error(
+                        chngset,
+                        field,
+                        "Error validating expression in Clause ##{index + 1} of `do:` block"
+                      )
+
+                    :error ->
+                      Ecto.Changeset.add_error(
+                        chngset,
+                        field,
+                        "Error evaluating expression in Clause ##{index + 1} of `do:` block"
+                      )
 
                     _ ->
                       raise ArgumentError,
-                            "Anonymous functions in validation clause must be either 0-arity or an input value for the field must be provided."
+                            "Bad expression in `field do:`. All clauses should be of the format `condition` -> `expression`"
                   end
                 else
-                  invalid?
+                  chngset
                 end
 
-              {err_msg, _bindings} = Code.eval_quoted(quoted_err, bindings, env)
-
-              if invalid? do
-                Ecto.Changeset.add_error(chngset, field, err_msg,
-                  validation: :block,
-                  clause: index + 1
-                )
-              else
-                chngset
-              end
-            rescue
-              _ ->
+              :error ->
                 Ecto.Changeset.add_error(
                   chngset,
                   field,
@@ -78,12 +115,9 @@ defmodule Flint.Extensions.Block do
                 )
             end
 
-          _, chngset ->
-            Ecto.Changeset.add_error(
-              chngset,
-              field,
-              "Bad expression in `field do:`. All clauses should be of the format `condition` -> `Error Message`"
-            )
+          _, _chngset ->
+            raise ArgumentError,
+                  "Bad expression in `field do:`. All clauses should be of the format `condition` -> `expression`"
         end)
     end
   end

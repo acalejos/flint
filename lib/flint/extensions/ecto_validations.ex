@@ -124,58 +124,75 @@ defmodule Flint.Extensions.EctoValidations do
         bindings = bindings ++ Enum.into(changeset.changes, [])
 
         validations =
-          validations
-          |> Enum.map(fn
-            {k, v} ->
-              {result, _bindings} = Code.eval_quoted(v, bindings, env)
-              {k, result}
+          Enum.reduce_while(validations, [], fn
+            {k, v}, acc ->
+              case eval_quoted(v, bindings, env) do
+                {:ok, {result, _binding}} ->
+                  {:cont, [{k, result} | acc]}
+
+                :error ->
+                  {:halt, {:error, {k, v}}}
+              end
           end)
 
-        {validate_length_args, validations} =
-          Keyword.split(validations, [:is, :min, :max, :count])
+        case validations do
+          {:error, {option, quoted_validation}} ->
+            error_string = """
+            Failed evaluate option `#{inspect(option)}` with the
+            following expression:
 
-        {validate_number_args, validations} =
-          Keyword.split(validations, [
-            :less_than,
-            :greater_than,
-            :less_than_or_equal_to,
-            :greater_than_or_equal_to,
-            :equal_to,
-            :not_equal_to
-          ])
+            #{Macro.to_string(quoted_validation)}
+            """
 
-        {validate_subset_arg, validations} = Keyword.pop(validations, :subset_of)
-        {validate_inclusion_arg, validations} = Keyword.pop(validations, :in)
-        {validate_exclusion_arg, validations} = Keyword.pop(validations, :not_in)
-        {validate_format_arg, _validations} = Keyword.pop(validations, :format)
+            Ecto.Changeset.add_error(changeset, field, error_string)
 
-        validation_args =
-          [
-            validate_inclusion: validate_inclusion_arg,
-            validate_exclusion: validate_exclusion_arg,
-            validate_number: validate_number_args,
-            validate_length: validate_length_args,
-            validate_format: validate_format_arg,
-            validate_subset: validate_subset_arg
-          ]
-          |> Enum.map(fn
-            {k, args} when k in [:validate_number, :validate_length] ->
-              {k, Enum.reject(args, fn {_k, v} -> is_nil(v) end)}
+          validations when is_list(validations) ->
+            {validate_length_args, validations} =
+              Keyword.split(validations, [:is, :min, :max, :count])
 
-            other ->
-              other
-          end)
+            {validate_number_args, validations} =
+              Keyword.split(validations, [
+                :less_than,
+                :greater_than,
+                :less_than_or_equal_to,
+                :greater_than_or_equal_to,
+                :equal_to,
+                :not_equal_to
+              ])
 
-        Enum.reduce(validation_args, changeset, fn
-          {_func, nil}, chngset ->
-            chngset
+            {validate_subset_arg, validations} = Keyword.pop(validations, :subset_of)
+            {validate_inclusion_arg, validations} = Keyword.pop(validations, :in)
+            {validate_exclusion_arg, validations} = Keyword.pop(validations, :not_in)
+            {validate_format_arg, _validations} = Keyword.pop(validations, :format)
 
-          {_func, []}, chngset ->
-            chngset
+            validation_args =
+              [
+                validate_inclusion: validate_inclusion_arg,
+                validate_exclusion: validate_exclusion_arg,
+                validate_number: validate_number_args,
+                validate_length: validate_length_args,
+                validate_format: validate_format_arg,
+                validate_subset: validate_subset_arg
+              ]
+              |> Enum.map(fn
+                {k, args} when k in [:validate_number, :validate_length] ->
+                  {k, Enum.reject(args, fn {_k, v} -> is_nil(v) end)}
 
-          {func, arg}, chngset ->
-            apply(Ecto.Changeset, func, [chngset, field, arg])
-        end)
+                other ->
+                  other
+              end)
+
+            Enum.reduce(validation_args, changeset, fn
+              {_func, nil}, chngset ->
+                chngset
+
+              {_func, []}, chngset ->
+                chngset
+
+              {func, arg}, chngset ->
+                apply(Ecto.Changeset, func, [chngset, field, arg])
+            end)
+        end
     end
   end
 end

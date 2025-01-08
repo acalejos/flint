@@ -57,8 +57,8 @@ defmodule Flint.Changeset do
     end)
   end
 
-  def to_bindings(%Ecto.Changeset{} = chngst) do
-    for {field, chng} <- chngst.changes do
+  def to_bindings(%Ecto.Changeset{changes: %{} = changes}) do
+    for {field, chng} <- changes do
       case chng do
         %Ecto.Changeset{} ->
           {field, to_bindings(chng)}
