@@ -117,6 +117,9 @@ defmodule Flint.Types.Union do
 
   defp check_field_type!(mod, name, type, opts) do
     cond do
+      is_nil(type) ->
+        nil
+
       composite?(type, name) ->
         {outer_type, inner_type} = type
         {outer_type, check_field_type!(mod, name, inner_type, opts)}

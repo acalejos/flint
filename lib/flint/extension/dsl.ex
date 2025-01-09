@@ -1,6 +1,11 @@
 defmodule Flint.Extension.Dsl do
   @moduledoc false
   @common_schema [
+    eval: [
+      type: :boolean,
+      default: false,
+      doc: "Whether to evaluate or keep as a quoted expression (AST)."
+    ],
     name: [
       type: :atom,
       required: true,

@@ -92,7 +92,7 @@ defmodule Flint.Extensions.EctoValidations do
   option :equal_to
   option :not_equal_to
   # validate_format
-  option :format
+  option :format, required: false, validator: &match?(%Regex{}, &1), eval: true
   # validate_subset
   option :subset_of
   # validate_inclusion
@@ -126,12 +126,18 @@ defmodule Flint.Extensions.EctoValidations do
         validations =
           Enum.reduce_while(validations, [], fn
             {k, v}, acc ->
-              case eval_quoted(v, bindings, env) do
-                {:ok, {result, _binding}} ->
-                  {:cont, [{k, result} | acc]}
+              case Macro.validate(v) do
+                :ok ->
+                  case eval_quoted(v, bindings, env) do
+                    {:ok, {result, _binding}} ->
+                      {:cont, [{k, result} | acc]}
 
-                :error ->
-                  {:halt, {:error, {k, v}}}
+                    :error ->
+                      {:halt, {:error, {k, v}}}
+                  end
+
+                _ ->
+                  {:cont, acc}
               end
           end)
 

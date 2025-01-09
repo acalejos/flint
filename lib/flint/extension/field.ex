@@ -4,6 +4,7 @@ defmodule Flint.Extension.Field do
     :name,
     :default,
     :required,
-    :validator
+    :validator,
+    :eval
   ]
 end

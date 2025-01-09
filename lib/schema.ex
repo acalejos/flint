@@ -87,7 +87,8 @@ defmodule Flint.Schema do
                                     name: option_name,
                                     default: default,
                                     validator: validator,
-                                    required: required
+                                    required: required,
+                                    eval: eval?
                                   } ->
         value =
           cond do
@@ -99,6 +100,14 @@ defmodule Flint.Schema do
 
             true ->
               nil
+          end
+
+        value =
+          if eval? do
+            {value, _bindings} = Code.eval_quoted(value)
+            value
+          else
+            value
           end
 
         if required && is_nil(value),
@@ -622,9 +631,18 @@ defmodule Flint.Schema do
                           %Flint.Extension.Field{
                             name: name,
                             validator: validator,
-                            default: default
+                            default: default,
+                            eval: eval?
                           }} ->
         attr_val = Module.get_attribute(__CALLER__.module, name)
+
+        attr_val =
+          if eval? do
+            {value, _bindings} = Code.eval_quoted(attr_val)
+            value
+          else
+            attr_val
+          end
 
         if validator && not validator.(attr_val) && attr_val != default,
           do:
