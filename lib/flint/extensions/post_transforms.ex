@@ -64,7 +64,13 @@ defmodule Flint.Extensions.PostTransforms do
 
     all_post_transforms =
       module.__schema__(:extra_options)
-      |> Enum.map(fn {field, opts} -> {field, Keyword.take(opts, __MODULE__.option_names())} end)
+      |> Enum.flat_map(fn {field, opts} ->
+        if field in Map.keys(changeset.changes) do
+          [{field, Keyword.take(opts, __MODULE__.option_names())}]
+        else
+          []
+        end
+      end)
 
     for {field, post_transforms} <- all_post_transforms, reduce: changeset do
       changeset ->

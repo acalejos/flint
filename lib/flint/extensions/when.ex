@@ -45,7 +45,13 @@ defmodule Flint.Extensions.When do
 
     all_validations =
       module.__schema__(:extra_options)
-      |> Enum.map(fn {field, opts} -> {field, Keyword.take(opts, __MODULE__.option_names())} end)
+      |> Enum.flat_map(fn {field, opts} ->
+        if field in Map.keys(changeset.changes) do
+          [{field, Keyword.take(opts, __MODULE__.option_names())}]
+        else
+          []
+        end
+      end)
 
     for {field, validations} <- all_validations, reduce: changeset do
       changeset ->

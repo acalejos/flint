@@ -17,7 +17,7 @@ defmodule Flint.Changeset do
     fields = module.__schema__(:fields) |> MapSet.new()
     embedded_fields = module.__schema__(:embeds) |> MapSet.new()
 
-    params =
+    inputs =
       case params do
         %Ecto.Changeset{params: params} -> params
         s when is_struct(s) -> Map.from_struct(params)
@@ -31,7 +31,7 @@ defmodule Flint.Changeset do
 
     changeset =
       schema
-      |> Ecto.Changeset.cast(params, fields |> MapSet.to_list())
+      |> Ecto.Changeset.cast(inputs, fields |> MapSet.to_list())
 
     extension_names =
       module.__schema__(:extensions)
@@ -49,12 +49,23 @@ defmodule Flint.Changeset do
         end)
       )
 
-    Enum.reduce(embedded_fields, changeset, fn field, chst ->
-      Ecto.Changeset.cast_embed(chst, field,
-        required: field in required_embeds,
-        with: &changeset(&1, &2, bindings ++ to_bindings(chst))
-      )
-    end)
+    changeset =
+      Enum.reduce(embedded_fields, changeset, fn field, chst ->
+        Ecto.Changeset.cast_embed(chst, field,
+          required: field in required_embeds,
+          with: &changeset(&1, &2, bindings ++ to_bindings(chst))
+        )
+      end)
+
+    # Passthrough virtual field changes
+    case params do
+      %Ecto.Changeset{changes: changes} ->
+        changeset
+        |> Ecto.Changeset.change(Map.take(changes, module.__schema__(:virtual_fields)))
+
+      _ ->
+        changeset
+    end
   end
 
   def to_bindings(%Ecto.Changeset{changes: %{} = changes}) do

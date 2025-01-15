@@ -38,12 +38,20 @@ defmodule Flint.Extensions.Block do
 
     all_validations =
       module.__schema__(:extra_options)
-      |> Enum.map(fn {field, opts} -> {field, Keyword.take(opts, __MODULE__.option_names())} end)
+      |> Enum.flat_map(fn {field, opts} ->
+        if field in Map.keys(changeset.changes) do
+          [{field, Keyword.take(opts, __MODULE__.option_names())}]
+        else
+          []
+        end
+      end)
 
     for {field, block} <- all_validations, reduce: changeset do
       changeset ->
         block = Keyword.get(block, :__block__) || []
-        bindings = bindings ++ Enum.into(changeset.changes, [])
+
+        bindings =
+          bindings ++ Enum.into(changeset.changes, [])
 
         block
         |> Enum.with_index()
